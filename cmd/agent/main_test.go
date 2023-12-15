@@ -3,15 +3,13 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 )
 
 func TestCollectMetrics(t *testing.T) {
-	var mu sync.Mutex
 	metrics := make(map[string]interface{})
 
-	collectMetrics(&metrics, &mu)
+	collectMetrics(metrics)
 
 	testMetrics := []string{"Alloc", "BuckHashSys", "Frees", "GCCPUFraction",
 		"GCSys", "HeapAlloc", "HeapIdle", "HeapInuse", "HeapObjects", "HeapReleased", "HeapSys", "LastGC",

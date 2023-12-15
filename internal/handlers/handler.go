@@ -1,26 +1,18 @@
 package handlers
 
 import (
+	"github.com/Nchezhegova/metrics-alerts/internal/storage"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
 	"sync"
 )
 
-type MemStorage struct {
-	Gauge   map[string]float64 `json:"gauge"`
-	Counter map[string]int64   `json:"counter"`
-}
-
-type Storage interface {
-	PrintMetrics()
-	UpdateMetrics()
-	GetMetric()
-}
-
 var mu sync.Mutex
 
-func (ms *MemStorage) UpdateMetrics(c *gin.Context) {
+func updateMetrics(c *gin.Context, m storage.MStorage) {
+	mu.Lock()
+	defer mu.Unlock()
 	switch c.Param("type") {
 	case "gauge":
 		k := c.Param("name")
@@ -29,9 +21,8 @@ func (ms *MemStorage) UpdateMetrics(c *gin.Context) {
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-		mu.Lock()
-		defer mu.Unlock()
-		ms.Gauge[k] = v
+		m.GaugeStorage(k, v)
+
 	case "counter":
 		k := c.Param("name")
 		v, err := strconv.ParseInt(c.Param("value"), 10, 64)
@@ -39,18 +30,16 @@ func (ms *MemStorage) UpdateMetrics(c *gin.Context) {
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-		mu.Lock()
-		defer mu.Unlock()
-		ms.Counter[k] += v
+		m.CountStorage(k, v)
 	default:
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
 }
-func (ms *MemStorage) GetMetric(c *gin.Context) {
+func getMetric(c *gin.Context, m storage.MStorage) {
 	switch c.Param("type") {
 	case "counter":
-		v, exists := ms.Counter[c.Param("name")]
+		v, exists := m.GetCount(c.Param("name"))
 		if exists {
 			c.JSON(http.StatusOK, v)
 		} else {
@@ -58,7 +47,8 @@ func (ms *MemStorage) GetMetric(c *gin.Context) {
 			return
 		}
 	case "gauge":
-		v, exists := ms.Gauge[c.Param("name")]
+		//v, exists := m.Gauge[c.Param("name")]
+		v, exists := m.GetGauge(c.Param("name"))
 		if exists {
 			c.JSON(http.StatusOK, v)
 		} else {
@@ -69,9 +59,27 @@ func (ms *MemStorage) GetMetric(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
-
 }
 
-func (ms *MemStorage) PrintMetrics(c *gin.Context) {
-	c.JSON(http.StatusOK, ms)
+func printMetrics(c *gin.Context, m storage.MStorage) {
+	res := m.GetStorage()
+	c.JSON(http.StatusOK, res)
+}
+
+func StartServ(m storage.MStorage, addr string) {
+	r := gin.Default()
+	r.POST("/update/:type/:name/:value", func(c *gin.Context) {
+		updateMetrics(c, m)
+	})
+	r.GET("/value/:type/:name/", func(c *gin.Context) {
+		getMetric(c, m)
+	})
+	r.GET("/", func(c *gin.Context) {
+		printMetrics(c, m)
+	})
+
+	err := r.Run(addr)
+	if err != nil {
+		panic(err)
+	}
 }
