@@ -1,11 +1,14 @@
 package handlers
 
 import (
+	"fmt"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 )
 
 var mu sync.Mutex
@@ -47,7 +50,6 @@ func getMetric(c *gin.Context, m storage.MStorage) {
 			return
 		}
 	case "gauge":
-		//v, exists := m.Gauge[c.Param("name")]
 		v, exists := m.GetGauge(c.Param("name"))
 		if exists {
 			c.JSON(http.StatusOK, v)
@@ -68,6 +70,14 @@ func printMetrics(c *gin.Context, m storage.MStorage) {
 
 func StartServ(m storage.MStorage, addr string) {
 	r := gin.Default()
+	logger, err := zap.NewProduction()
+	if err != nil {
+		panic(fmt.Sprintf("Не удалось создать логгер: %v", err))
+	}
+	defer logger.Sync()
+
+	r.Use(GinLogger(logger), gin.Recovery())
+
 	r.POST("/update/:type/:name/:value", func(c *gin.Context) {
 		updateMetrics(c, m)
 	})
@@ -78,8 +88,28 @@ func StartServ(m storage.MStorage, addr string) {
 		printMetrics(c, m)
 	})
 
-	err := r.Run(addr)
+	err = r.Run(addr)
 	if err != nil {
 		panic(err)
+	}
+}
+
+func GinLogger(logger *zap.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		duration := time.Since(start)
+
+		statusCode := c.Writer.Status()
+		size := c.Writer.Size()
+
+		logger.Info(
+			"HTTP Request",
+			zap.String("method", c.Request.Method),
+			zap.Duration("duration", duration),
+			zap.String("URI", c.Request.RequestURI),
+			zap.Int("Response status", statusCode),
+			zap.Int("Response size", size),
+		)
 	}
 }
