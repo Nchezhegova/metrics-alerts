@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
 	"github.com/gin-gonic/gin"
@@ -50,9 +52,82 @@ func getMetric(c *gin.Context, m storage.MStorage) {
 			return
 		}
 	case "gauge":
+		//v, exists := m.Gauge[c.Param("name")]
 		v, exists := m.GetGauge(c.Param("name"))
 		if exists {
 			c.JSON(http.StatusOK, v)
+		} else {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+	default:
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+}
+func updateMetricsFromBody(c *gin.Context, m storage.MStorage) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	var metrics storage.Metrics
+
+	decoder := json.NewDecoder(c.Request.Body)
+	err := decoder.Decode(&metrics)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	switch metrics.MType {
+	case "gauge":
+		k := metrics.ID
+		v := metrics.Value
+		m.GaugeStorage(k, *v)
+		c.JSON(http.StatusOK, metrics)
+
+	case "counter":
+		k := metrics.ID
+		v := metrics.Delta
+		m.CountStorage(k, *v)
+		vNew, _ := m.GetCount(metrics.ID)
+		metrics.Delta = &vNew
+		c.JSON(http.StatusOK, metrics)
+
+	default:
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+}
+func getMetricFromBody(c *gin.Context, m storage.MStorage) {
+
+	var metrics storage.Metrics
+	var buf bytes.Buffer
+	_, err := buf.ReadFrom(c.Request.Body)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if err := json.Unmarshal(buf.Bytes(), &metrics); err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	switch metrics.MType {
+	case "counter":
+		v, exists := m.GetCount(metrics.ID)
+		if exists {
+			metrics.Delta = &v
+			c.JSON(http.StatusOK, metrics)
+		} else {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+	case "gauge":
+		v, exists := m.GetGauge(metrics.ID)
+		if exists {
+			metrics.Value = &v
+			c.JSON(http.StatusOK, metrics)
 		} else {
 			c.AbortWithStatus(http.StatusNotFound)
 			return
@@ -81,8 +156,14 @@ func StartServ(m storage.MStorage, addr string) {
 	r.POST("/update/:type/:name/:value", func(c *gin.Context) {
 		updateMetrics(c, m)
 	})
+	r.POST("/update/", func(c *gin.Context) {
+		updateMetricsFromBody(c, m)
+	})
 	r.GET("/value/:type/:name/", func(c *gin.Context) {
 		getMetric(c, m)
+	})
+	r.POST("/value/", func(c *gin.Context) {
+		getMetricFromBody(c, m)
 	})
 	r.GET("/", func(c *gin.Context) {
 		printMetrics(c, m)
@@ -94,6 +175,7 @@ func StartServ(m storage.MStorage, addr string) {
 	}
 }
 
+// TODO вынести логгер
 func GinLogger(logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
