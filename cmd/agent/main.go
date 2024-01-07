@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -16,21 +17,6 @@ import (
 	"time"
 )
 
-// Функция для отправки метрики на сервер
-//func sendMetric(metricType, name string, value interface{}, addr string) {
-//	url := fmt.Sprintf("http://%s/update/%s/%s/%v", addr, metricType, name, value)
-//	resp, err := http.Post(url, "text/plain", nil)
-//	if err != nil {
-//		fmt.Println("Error sending metric:", err)
-//		return
-//	}
-//	err = resp.Body.Close()
-//	if err != nil {
-//		fmt.Println("Error closing body:", err)
-//		return
-//	}
-//}
-
 func sendMetric(m storage.Metrics, addr string) {
 	url := fmt.Sprintf("http://%s/update/", addr)
 
@@ -39,7 +25,18 @@ func sendMetric(m storage.Metrics, addr string) {
 		fmt.Println("Error convert to JSON:", err)
 		return
 	}
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
+
+	var compressBody bytes.Buffer
+	gzipWriter := gzip.NewWriter(&compressBody)
+	_, err = gzipWriter.Write(body)
+	if err != nil {
+		fmt.Println("Error convert to gzip.Writer:", err)
+		return
+	}
+	gzipWriter.Close()
+
+	resp, err := http.Post(url, "application/json", &compressBody)
+	//	resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		fmt.Println("Error sending metric:", err)
 		return
@@ -137,7 +134,7 @@ func main() {
 	for {
 		time.Sleep(reportInterval)
 		mu.Lock()
-		for index, _ := range metrics {
+		for index := range metrics {
 			//sendMetric("gauge", name, value, addr)
 			sendMetric(metrics[index], addr)
 		}

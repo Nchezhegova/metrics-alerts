@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"io"
 	"net/http"
 	"strconv"
 	"sync"
@@ -18,6 +20,7 @@ var mu sync.Mutex
 func updateMetrics(c *gin.Context, m storage.MStorage) {
 	mu.Lock()
 	defer mu.Unlock()
+
 	switch c.Param("type") {
 	case "gauge":
 		k := c.Param("name")
@@ -70,8 +73,23 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage) {
 	defer mu.Unlock()
 
 	var metrics storage.Metrics
+	var b io.ReadCloser
 
-	decoder := json.NewDecoder(c.Request.Body)
+	if c.GetHeader(`Accept-Encoding`) == `gzip` {
+		gz, err := gzip.NewReader(c.Request.Body)
+		if err != nil {
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+		defer gz.Close()
+		b = gz
+		c.Header("Content-Type", "gzip")
+
+	} else {
+		b = c.Request.Body
+	}
+
+	decoder := json.NewDecoder(b)
 	err := decoder.Decode(&metrics)
 	if err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
