@@ -75,7 +75,7 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage) {
 	var metrics storage.Metrics
 	var b io.ReadCloser
 
-	if c.GetHeader(`Accept-Encoding`) == `gzip` {
+	if c.GetHeader("Content-Encoding") == "gzip" {
 		gz, err := gzip.NewReader(c.Request.Body)
 		if err != nil {
 			c.AbortWithStatus(http.StatusBadRequest)
@@ -83,7 +83,7 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage) {
 		}
 		defer gz.Close()
 		b = gz
-		c.Header("Content-Type", "gzip")
+		c.Header("Accept-Encoding", "gzip")
 
 	} else {
 		b = c.Request.Body

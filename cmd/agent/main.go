@@ -26,6 +26,8 @@ func sendMetric(m storage.Metrics, addr string) {
 		return
 	}
 
+	//resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
+
 	var compressBody bytes.Buffer
 	gzipWriter := gzip.NewWriter(&compressBody)
 	_, err = gzipWriter.Write(body)
@@ -35,10 +37,22 @@ func sendMetric(m storage.Metrics, addr string) {
 	}
 	gzipWriter.Close()
 
-	resp, err := http.Post(url, "application/json", &compressBody)
-	//	resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
+	client := &http.Client{
+		Transport: &http.Transport{
+			DisableCompression: false, // Включаем сжатие
+		},
+	}
+	req, err := http.NewRequest("POST", url, &compressBody)
 	if err != nil {
-		fmt.Println("Error sending metric:", err)
+		fmt.Println("Error creating request:", err)
+		return
+	}
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Error sending request:", err)
 		return
 	}
 	err = resp.Body.Close()
