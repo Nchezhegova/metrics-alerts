@@ -9,8 +9,7 @@ import (
 )
 
 func TestCollectMetrics(t *testing.T) {
-	var metrics []storage.Metrics
-	metrics = collectMetrics()
+	var metrics = collectMetrics()
 	if len(metrics) != 28 {
 		t.Errorf("not correct metrics len")
 	}

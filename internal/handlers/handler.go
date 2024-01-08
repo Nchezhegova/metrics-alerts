@@ -101,7 +101,6 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage) {
 		k := metrics.ID
 		v := metrics.Value
 		m.GaugeStorage(k, *v)
-		c.JSON(http.StatusOK, metrics)
 
 	case "counter":
 		k := metrics.ID
@@ -109,11 +108,41 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage) {
 		m.CountStorage(k, *v)
 		vNew, _ := m.GetCount(metrics.ID)
 		metrics.Delta = &vNew
-		c.JSON(http.StatusOK, metrics)
 
 	default:
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
+	}
+
+	if c.GetHeader("Accept-Encoding") == "gzip" {
+		var compressBody bytes.Buffer
+		gzipWriter := gzip.NewWriter(&compressBody)
+
+		metricsByte, err := json.Marshal(metrics)
+		if err != nil {
+			fmt.Println("Error convert to JSON:", err)
+			return
+		}
+
+		_, err = gzipWriter.Write(metricsByte)
+		if err != nil {
+			fmt.Println("Error convert to gzip.Writer:", err)
+			return
+		}
+
+		err = gzipWriter.Close()
+		if err != nil {
+			fmt.Println("Error closing compressed:", err)
+			return
+		}
+
+		compressedData := compressBody.String()
+		c.Header("Content-Encoding", "gzip")
+		c.Header("Content-Type", "application/json")
+
+		c.Data(http.StatusOK, "application/json", []byte(compressedData))
+	} else {
+		c.JSON(http.StatusOK, metrics)
 	}
 }
 func getMetricFromBody(c *gin.Context, m storage.MStorage) {
@@ -136,7 +165,6 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 		v, exists := m.GetCount(metrics.ID)
 		if exists {
 			metrics.Delta = &v
-			c.JSON(http.StatusOK, metrics)
 		} else {
 			c.AbortWithStatus(http.StatusNotFound)
 			return
@@ -145,7 +173,6 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 		v, exists := m.GetGauge(metrics.ID)
 		if exists {
 			metrics.Value = &v
-			c.JSON(http.StatusOK, metrics)
 		} else {
 			c.AbortWithStatus(http.StatusNotFound)
 			return
@@ -154,11 +181,71 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
+
+	if c.GetHeader("Accept-Encoding") == "gzip" {
+		var compressBody bytes.Buffer
+		gzipWriter := gzip.NewWriter(&compressBody)
+
+		metricsByte, err := json.Marshal(metrics)
+		if err != nil {
+			fmt.Println("Error convert to JSON:", err)
+			return
+		}
+
+		_, err = gzipWriter.Write(metricsByte)
+		if err != nil {
+			fmt.Println("Error convert to gzip.Writer:", err)
+			return
+		}
+
+		err = gzipWriter.Close()
+		if err != nil {
+			fmt.Println("Error closing compressed:", err)
+			return
+		}
+
+		compressedData := compressBody.String()
+		c.Header("Content-Encoding", "gzip")
+		c.Header("Content-Type", "application/json")
+
+		c.Data(http.StatusOK, "application/json", []byte(compressedData))
+	} else {
+		c.JSON(http.StatusOK, metrics)
+	}
 }
 
 func printMetrics(c *gin.Context, m storage.MStorage) {
 	res := m.GetStorage()
-	c.JSON(http.StatusOK, res)
+	if c.GetHeader("Accept-Encoding") == "gzip" {
+		var compressBody bytes.Buffer
+		gzipWriter := gzip.NewWriter(&compressBody)
+
+		metricsByte, err := json.Marshal(res)
+		if err != nil {
+			fmt.Println("Error convert to JSON:", err)
+			return
+		}
+
+		_, err = gzipWriter.Write(metricsByte)
+		if err != nil {
+			fmt.Println("Error convert to gzip.Writer:", err)
+			return
+		}
+
+		err = gzipWriter.Close()
+		if err != nil {
+			fmt.Println("Error closing compressed:", err)
+			return
+		}
+
+		compressedData := compressBody.String()
+		c.Header("Content-Encoding", "gzip")
+		c.Header("Content-Type", "text/html")
+
+		c.Data(http.StatusOK, "text/html", []byte(compressedData))
+	} else {
+		c.JSON(http.StatusOK, res)
+	}
 }
 
 func StartServ(m storage.MStorage, addr string) {

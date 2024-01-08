@@ -35,7 +35,11 @@ func sendMetric(m storage.Metrics, addr string) {
 		fmt.Println("Error convert to gzip.Writer:", err)
 		return
 	}
-	gzipWriter.Close()
+	err = gzipWriter.Close()
+	if err != nil {
+		fmt.Println("Error closing compressed:", err)
+		return
+	}
 
 	client := &http.Client{
 		Transport: &http.Transport{
