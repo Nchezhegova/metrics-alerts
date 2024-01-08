@@ -11,6 +11,7 @@ type MStorage interface {
 	GetStorage() MemStorage
 	GetCount(string) (int64, bool)
 	GetGauge(string) (float64, bool)
+	SetStartData(MemStorage)
 }
 
 func (s *MemStorage) CountStorage(k string, v int64) {
@@ -23,6 +24,11 @@ func (s *MemStorage) GaugeStorage(k string, v float64) {
 
 func (s *MemStorage) GetStorage() MemStorage {
 	return *s
+}
+
+func (s *MemStorage) SetStartData(storage MemStorage) {
+	s.Gauge = storage.Gauge
+	s.Counter = storage.Counter
 }
 
 func (s *MemStorage) GetGauge(key string) (float64, bool) {
