@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"github.com/Nchezhegova/metrics-alerts/internal/helpers"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -12,12 +13,11 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
-	"time"
 )
 
 var mu sync.Mutex
 
-func updateMetrics(c *gin.Context, m storage.MStorage) {
+func updateMetrics(c *gin.Context, m storage.MStorage, syncWrite bool, filePath string) {
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -42,6 +42,10 @@ func updateMetrics(c *gin.Context, m storage.MStorage) {
 	default:
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
+	}
+
+	if syncWrite {
+		helpers.WriteFile(m, filePath)
 	}
 }
 func getMetric(c *gin.Context, m storage.MStorage) {
@@ -68,7 +72,7 @@ func getMetric(c *gin.Context, m storage.MStorage) {
 		return
 	}
 }
-func updateMetricsFromBody(c *gin.Context, m storage.MStorage) {
+func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, filePath string) {
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -144,6 +148,10 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage) {
 	} else {
 		c.JSON(http.StatusOK, metrics)
 	}
+
+	if syncWrite {
+		helpers.WriteFile(m, filePath)
+	}
 }
 func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 
@@ -216,15 +224,14 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 
 func printMetrics(c *gin.Context, m storage.MStorage) {
 	res := m.GetStorage()
+	metricsByte, err := json.Marshal(res)
+	if err != nil {
+		fmt.Println("Error convert to JSON:", err)
+		return
+	}
 	if c.GetHeader("Accept-Encoding") == "gzip" {
 		var compressBody bytes.Buffer
 		gzipWriter := gzip.NewWriter(&compressBody)
-
-		metricsByte, err := json.Marshal(res)
-		if err != nil {
-			fmt.Println("Error convert to JSON:", err)
-			return
-		}
 
 		_, err = gzipWriter.Write(metricsByte)
 		if err != nil {
@@ -244,11 +251,11 @@ func printMetrics(c *gin.Context, m storage.MStorage) {
 
 		c.Data(http.StatusOK, "text/html", []byte(compressedData))
 	} else {
-		c.JSON(http.StatusOK, res)
+		c.String(http.StatusOK, string(metricsByte))
 	}
 }
 
-func StartServ(m storage.MStorage, addr string) {
+func StartServ(m storage.MStorage, addr string, storeInterval int, filePath string, restore bool) {
 	r := gin.Default()
 	logger, err := zap.NewProduction()
 	if err != nil {
@@ -256,13 +263,15 @@ func StartServ(m storage.MStorage, addr string) {
 	}
 	defer logger.Sync()
 
-	r.Use(GinLogger(logger), gin.Recovery())
+	r.Use(helpers.GinLogger(logger), gin.Recovery())
+
+	syncWrite := helpers.SetWriterFile(m, storeInterval, filePath, restore)
 
 	r.POST("/update/:type/:name/:value", func(c *gin.Context) {
-		updateMetrics(c, m)
+		updateMetrics(c, m, syncWrite, filePath)
 	})
 	r.POST("/update/", func(c *gin.Context) {
-		updateMetricsFromBody(c, m)
+		updateMetricsFromBody(c, m, syncWrite, filePath)
 	})
 	r.GET("/value/:type/:name/", func(c *gin.Context) {
 		getMetric(c, m)
@@ -277,26 +286,5 @@ func StartServ(m storage.MStorage, addr string) {
 	err = r.Run(addr)
 	if err != nil {
 		panic(err)
-	}
-}
-
-// TODO вынести логгер
-func GinLogger(logger *zap.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-		c.Next()
-		duration := time.Since(start)
-
-		statusCode := c.Writer.Status()
-		size := c.Writer.Size()
-
-		logger.Info(
-			"HTTP Request",
-			zap.String("method", c.Request.Method),
-			zap.Duration("duration", duration),
-			zap.String("URI", c.Request.RequestURI),
-			zap.Int("Response status", statusCode),
-			zap.Int("Response size", size),
-		)
 	}
 }

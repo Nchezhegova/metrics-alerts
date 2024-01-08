@@ -18,7 +18,7 @@ func createContext(req testreq, ms *storage.MemStorage) (storage.MemStorage, *gi
 	w := httptest.NewRecorder()
 	c, r := gin.CreateTestContext(w)
 	r.POST("/update/:type/:name/:value", func(c *gin.Context) {
-		updateMetrics(c, ms)
+		updateMetrics(c, ms, false, "")
 	})
 	r.GET("/value/:type/:name/", func(c *gin.Context) {
 		getMetric(c, ms)
@@ -68,7 +68,7 @@ func Test_updateMetrics(t *testing.T) {
 				Counter: make(map[string]int64),
 			}
 			m, c, _ := createContext(tt.value, &ms)
-			updateMetrics(c, &m)
+			updateMetrics(c, &m, false, "")
 			assert.Equal(t, m.Gauge["qwe"], tt.want.Gauge["qwe"])
 			assert.Equal(t, m.Counter["qwe"], tt.want.Counter["qwe"])
 		})
