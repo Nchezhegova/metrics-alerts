@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
 	"math/rand"
 	"net/http"
@@ -41,11 +42,7 @@ func sendMetric(m storage.Metrics, addr string) {
 		return
 	}
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			DisableCompression: false, // Включаем сжатие
-		},
-	}
+	client := &http.Client{}
 	req, err := http.NewRequest("POST", url, &compressBody)
 	if err != nil {
 		fmt.Println("Error creating request:", err)
@@ -86,7 +83,7 @@ func collectMetrics() []storage.Metrics {
 
 		m := storage.Metrics{
 			ID:    fieldName,
-			MType: "gauge",
+			MType: config.Gauge,
 			Value: &field,
 		}
 		metrics = append(metrics, m)
@@ -94,7 +91,7 @@ func collectMetrics() []storage.Metrics {
 	randomValue := rand.Float64()
 	m := storage.Metrics{
 		ID:    "RandomValue",
-		MType: "gauge",
+		MType: config.Gauge,
 		Value: &randomValue,
 	}
 	metrics = append(metrics, m)
@@ -153,12 +150,11 @@ func main() {
 		time.Sleep(reportInterval)
 		mu.Lock()
 		for index := range metrics {
-			//sendMetric("gauge", name, value, addr)
 			sendMetric(metrics[index], addr)
 		}
 		m := storage.Metrics{
 			ID:    "PollCount",
-			MType: "counter",
+			MType: config.Counter,
 			Delta: &pollCount,
 		}
 

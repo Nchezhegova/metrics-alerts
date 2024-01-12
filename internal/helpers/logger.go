@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"time"
@@ -24,4 +25,13 @@ func GinLogger(logger *zap.Logger) gin.HandlerFunc {
 			zap.Int("Response size", size),
 		)
 	}
+}
+
+func InitLogger() *zap.Logger {
+	logger, err := zap.NewProduction()
+	if err != nil {
+		panic(fmt.Sprintf("Не удалось создать логгер: %v", err))
+	}
+	defer logger.Sync()
+	return logger
 }

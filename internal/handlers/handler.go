@@ -5,13 +5,14 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/helpers"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -22,7 +23,7 @@ func updateMetrics(c *gin.Context, m storage.MStorage, syncWrite bool, filePath 
 	defer mu.Unlock()
 
 	switch c.Param("type") {
-	case "gauge":
+	case config.Gauge:
 		k := c.Param("name")
 		v, err := strconv.ParseFloat(c.Param("value"), 64)
 		if err != nil {
@@ -31,7 +32,7 @@ func updateMetrics(c *gin.Context, m storage.MStorage, syncWrite bool, filePath 
 		}
 		m.GaugeStorage(k, v)
 
-	case "counter":
+	case config.Counter:
 		k := c.Param("name")
 		v, err := strconv.ParseInt(c.Param("value"), 10, 64)
 		if err != nil {
@@ -50,7 +51,7 @@ func updateMetrics(c *gin.Context, m storage.MStorage, syncWrite bool, filePath 
 }
 func getMetric(c *gin.Context, m storage.MStorage) {
 	switch c.Param("type") {
-	case "counter":
+	case config.Counter:
 		v, exists := m.GetCount(c.Param("name"))
 		if exists {
 			c.JSON(http.StatusOK, v)
@@ -58,8 +59,7 @@ func getMetric(c *gin.Context, m storage.MStorage) {
 			c.AbortWithStatus(http.StatusNotFound)
 			return
 		}
-	case "gauge":
-		//v, exists := m.Gauge[c.Param("name")]
+	case config.Gauge:
 		v, exists := m.GetGauge(c.Param("name"))
 		if exists {
 			c.JSON(http.StatusOK, v)
@@ -79,7 +79,8 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, f
 	var metrics storage.Metrics
 	var b io.ReadCloser
 
-	if c.GetHeader("Content-Encoding") == "gzip" {
+	//if c.GetHeader("Content-Encoding") == "gzip" {
+	if strings.Contains(c.GetHeader("Content-Encoding"), "gzip") {
 		gz, err := gzip.NewReader(c.Request.Body)
 		if err != nil {
 			c.AbortWithStatus(http.StatusBadRequest)
@@ -101,12 +102,12 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, f
 	}
 
 	switch metrics.MType {
-	case "gauge":
+	case config.Gauge:
 		k := metrics.ID
 		v := metrics.Value
 		m.GaugeStorage(k, *v)
 
-	case "counter":
+	case config.Counter:
 		k := metrics.ID
 		v := metrics.Delta
 		m.CountStorage(k, *v)
@@ -118,7 +119,8 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, f
 		return
 	}
 
-	if c.GetHeader("Accept-Encoding") == "gzip" {
+	//if c.GetHeader("Accept-Encoding") == "gzip" {
+	if strings.Contains(c.GetHeader("Accept-Encoding"), "gzip") {
 		var compressBody bytes.Buffer
 		gzipWriter := gzip.NewWriter(&compressBody)
 
@@ -257,13 +259,10 @@ func printMetrics(c *gin.Context, m storage.MStorage) {
 
 func StartServ(m storage.MStorage, addr string, storeInterval int, filePath string, restore bool) {
 	r := gin.Default()
-	logger, err := zap.NewProduction()
-	if err != nil {
-		panic(fmt.Sprintf("Не удалось создать логгер: %v", err))
-	}
-	defer logger.Sync()
 
-	r.Use(helpers.GinLogger(logger), gin.Recovery())
+	// и тут инициализация.
+	Logger := helpers.InitLogger()
+	r.Use(helpers.GinLogger(Logger), gin.Recovery())
 
 	syncWrite := helpers.SetWriterFile(m, storeInterval, filePath, restore)
 
@@ -283,7 +282,7 @@ func StartServ(m storage.MStorage, addr string, storeInterval int, filePath stri
 		printMetrics(c, m)
 	})
 
-	err = r.Run(addr)
+	err := r.Run(addr)
 	if err != nil {
 		panic(err)
 	}
