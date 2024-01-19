@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
+	"io"
 	"math/rand"
 	"net/http"
 	"os"
@@ -29,8 +30,12 @@ func sendMetric(m storage.Metrics, addr string) {
 
 	//resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
 
-	var compressBody bytes.Buffer
-	gzipWriter := gzip.NewWriter(&compressBody)
+	//var compressBody bytes.Buffer
+	//var compressBody io.Reader = &bytes.Buffer{}
+
+	//разобраться что за магия
+	var compressBody io.ReadWriter = &bytes.Buffer{}
+	gzipWriter := gzip.NewWriter(compressBody)
 	_, err = gzipWriter.Write(body)
 	if err != nil {
 		fmt.Println("Error convert to gzip.Writer:", err)
@@ -43,7 +48,7 @@ func sendMetric(m storage.Metrics, addr string) {
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", url, &compressBody)
+	req, err := http.NewRequest("POST", url, compressBody)
 	if err != nil {
 		fmt.Println("Error creating request:", err)
 		return

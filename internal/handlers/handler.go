@@ -3,12 +3,14 @@ package handlers
 import (
 	"bytes"
 	"compress/gzip"
+	"database/sql"
 	"encoding/json"
-	"fmt"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/helpers"
+	"github.com/Nchezhegova/metrics-alerts/internal/log"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"strconv"
@@ -79,7 +81,6 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, f
 	var metrics storage.Metrics
 	var b io.ReadCloser
 
-	//if c.GetHeader("Content-Encoding") == "gzip" {
 	if strings.Contains(c.GetHeader("Content-Encoding"), "gzip") {
 		gz, err := gzip.NewReader(c.Request.Body)
 		if err != nil {
@@ -119,26 +120,25 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, f
 		return
 	}
 
-	//if c.GetHeader("Accept-Encoding") == "gzip" {
 	if strings.Contains(c.GetHeader("Accept-Encoding"), "gzip") {
 		var compressBody bytes.Buffer
 		gzipWriter := gzip.NewWriter(&compressBody)
 
 		metricsByte, err := json.Marshal(metrics)
 		if err != nil {
-			fmt.Println("Error convert to JSON:", err)
+			log.Logger.Info("Error convert to JSON:", zap.Error(err))
 			return
 		}
 
 		_, err = gzipWriter.Write(metricsByte)
 		if err != nil {
-			fmt.Println("Error convert to gzip.Writer:", err)
+			log.Logger.Info("Error convert to gzip.Writer:", zap.Error(err))
 			return
 		}
 
 		err = gzipWriter.Close()
 		if err != nil {
-			fmt.Println("Error closing compressed:", err)
+			log.Logger.Info("Error closing compressed:", zap.Error(err))
 			return
 		}
 
@@ -198,19 +198,19 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 
 		metricsByte, err := json.Marshal(metrics)
 		if err != nil {
-			fmt.Println("Error convert to JSON:", err)
+			log.Logger.Info("Error convert to JSON:", zap.Error(err))
 			return
 		}
 
 		_, err = gzipWriter.Write(metricsByte)
 		if err != nil {
-			fmt.Println("Error convert to gzip.Writer:", err)
+			log.Logger.Info("Error convert to gzip.Writer:", zap.Error(err))
 			return
 		}
 
 		err = gzipWriter.Close()
 		if err != nil {
-			fmt.Println("Error closing compressed:", err)
+			log.Logger.Info("Error closing compressed:", zap.Error(err))
 			return
 		}
 
@@ -221,14 +221,14 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 		c.Data(http.StatusOK, "application/json", []byte(compressedData))
 	} else {
 		c.JSON(http.StatusOK, metrics)
+		//c.String(http.StatusOK, metrics)
 	}
 }
-
 func printMetrics(c *gin.Context, m storage.MStorage) {
 	res := m.GetStorage()
 	metricsByte, err := json.Marshal(res)
 	if err != nil {
-		fmt.Println("Error convert to JSON:", err)
+		log.Logger.Info("Error convert to JSON:", zap.Error(err))
 		return
 	}
 	if c.GetHeader("Accept-Encoding") == "gzip" {
@@ -237,13 +237,13 @@ func printMetrics(c *gin.Context, m storage.MStorage) {
 
 		_, err = gzipWriter.Write(metricsByte)
 		if err != nil {
-			fmt.Println("Error convert to gzip.Writer:", err)
+			log.Logger.Info("Error convert to gzip.Writer:", zap.Error(err))
 			return
 		}
 
 		err = gzipWriter.Close()
 		if err != nil {
-			fmt.Println("Error closing compressed:", err)
+			log.Logger.Info("Error closing compressed:", zap.Error(err))
 			return
 		}
 
@@ -257,12 +257,19 @@ func printMetrics(c *gin.Context, m storage.MStorage) {
 	}
 }
 
+func checkbd(c *gin.Context, db *sql.DB) {
+	err := storage.CheckConnect(db)
+	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	c.Status(http.StatusOK)
+}
+
 func StartServ(m storage.MStorage, addr string, storeInterval int, filePath string, restore bool) {
 	r := gin.Default()
 
-	// и тут инициализация.
-	Logger := helpers.InitLogger()
-	r.Use(helpers.GinLogger(Logger), gin.Recovery())
+	r.Use(log.GinLogger(log.Logger), gin.Recovery())
 
 	syncWrite := helpers.SetWriterFile(m, storeInterval, filePath, restore)
 
@@ -280,6 +287,10 @@ func StartServ(m storage.MStorage, addr string, storeInterval int, filePath stri
 	})
 	r.GET("/", func(c *gin.Context) {
 		printMetrics(c, m)
+	})
+
+	r.GET("/ping", func(c *gin.Context) {
+		checkbd(c, storage.DB)
 	})
 
 	err := r.Run(addr)

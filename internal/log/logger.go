@@ -1,4 +1,4 @@
-package helpers
+package log
 
 import (
 	"fmt"
@@ -6,6 +6,17 @@ import (
 	"go.uber.org/zap"
 	"time"
 )
+
+var Logger *zap.Logger
+
+func init() {
+	var err error
+	Logger, err = zap.NewProduction()
+	if err != nil {
+		panic(fmt.Sprintf("Не удалось создать логгер: %v", err))
+	}
+
+}
 
 func GinLogger(logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -27,11 +38,10 @@ func GinLogger(logger *zap.Logger) gin.HandlerFunc {
 	}
 }
 
-func InitLogger() *zap.Logger {
-	logger, err := zap.NewProduction()
-	if err != nil {
-		panic(fmt.Sprintf("Не удалось создать логгер: %v", err))
-	}
-	defer logger.Sync()
-	return logger
-}
+//func InitLogger() *zap.Logger {
+//	logger, err := zap.NewProduction()
+//
+//	//перетащить в мейн
+//	defer logger.Sync()
+//	return logger
+//}
