@@ -90,6 +90,7 @@ func (d *DBStorage) GetStorage() interface{} {
 		panic(err)
 	}
 	defer rows.Close()
+	defer rows.Err()
 	for rows.Next() {
 		if err := rows.Scan(&d.Name, &d.Value); err != nil {
 			panic(err)
