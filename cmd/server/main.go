@@ -11,9 +11,12 @@ import (
 )
 
 func main() {
-	var globalMemory = storage.MemStorage{}
-	globalMemory.Counter = make(map[string]int64)
-	globalMemory.Gauge = make(map[string]float64)
+	//var globalMemory = storage.MemStorage{}
+	//globalMemory.Counter = make(map[string]int64)
+	//globalMemory.Gauge = make(map[string]float64)
+
+	//var globalMemory storage.DBStorage{}
+	//var globalMemory storage.MStorage
 
 	var addr string
 	var storeInterval int
@@ -47,7 +50,21 @@ func main() {
 		restore = restoreValue
 	}
 
-	handlers.StartServ(&globalMemory, addr, storeInterval, filePath, restore)
+	var addrDB string
+	flag.StringVar(&addrDB, "d", "", "input addr db")
+	if envDBaddr := os.Getenv("DATABASE_DSN"); envDBaddr != "" {
+		addrDB = envDBaddr
+	}
+	if addrDB != "" {
+		DBMemory := storage.DBStorage{}
+		storage.OpenDB(addrDB)
+		handlers.StartServ(&DBMemory, addr, storeInterval, filePath, restore)
+	} else {
+		globalMemory := storage.MemStorage{}
+		globalMemory.Counter = make(map[string]int64)
+		globalMemory.Gauge = make(map[string]float64)
+		handlers.StartServ(&globalMemory, addr, storeInterval, filePath, restore)
+	}
 
 	defer log.Logger.Sync()
 	defer storage.DB.Close()

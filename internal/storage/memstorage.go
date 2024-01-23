@@ -8,7 +8,7 @@ type MemStorage struct {
 type MStorage interface {
 	CountStorage(string, int64)
 	GaugeStorage(string, float64)
-	GetStorage() MemStorage
+	GetStorage() interface{}
 	GetCount(string) (int64, bool)
 	GetGauge(string) (float64, bool)
 	SetStartData(MemStorage)
@@ -22,7 +22,7 @@ func (s *MemStorage) GaugeStorage(k string, v float64) {
 	s.Gauge[k] = v
 }
 
-func (s *MemStorage) GetStorage() MemStorage {
+func (s *MemStorage) GetStorage() interface{} {
 	return *s
 }
 

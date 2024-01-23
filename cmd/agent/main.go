@@ -30,9 +30,6 @@ func sendMetric(m storage.Metrics, addr string) {
 
 	//resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
 
-	//var compressBody bytes.Buffer
-	//var compressBody io.Reader = &bytes.Buffer{}
-
 	//разобраться что за магия
 	var compressBody io.ReadWriter = &bytes.Buffer{}
 	gzipWriter := gzip.NewWriter(compressBody)

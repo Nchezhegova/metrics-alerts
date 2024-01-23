@@ -171,7 +171,7 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 	}
 
 	switch metrics.MType {
-	case "counter":
+	case config.Counter:
 		v, exists := m.GetCount(metrics.ID)
 		if exists {
 			metrics.Delta = &v
@@ -179,7 +179,7 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 			c.AbortWithStatus(http.StatusNotFound)
 			return
 		}
-	case "gauge":
+	case config.Gauge:
 		v, exists := m.GetGauge(metrics.ID)
 		if exists {
 			metrics.Value = &v
@@ -257,13 +257,23 @@ func printMetrics(c *gin.Context, m storage.MStorage) {
 	}
 }
 
-func checkbd(c *gin.Context, db *sql.DB) {
-	err := storage.CheckConnect(db)
-	if err != nil {
+func checkDB(c *gin.Context, db *sql.DB) {
+	if db != nil {
+		err := storage.CheckConnect(db)
+		if err != nil {
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+		//err := storage.CheckConnect(db)
+		//if err != nil {
+		//	c.AbortWithStatus(http.StatusInternalServerError)
+		//	return
+		//}
+		c.Status(http.StatusOK)
+	} else {
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
-	c.Status(http.StatusOK)
 }
 
 func StartServ(m storage.MStorage, addr string, storeInterval int, filePath string, restore bool) {
@@ -288,9 +298,8 @@ func StartServ(m storage.MStorage, addr string, storeInterval int, filePath stri
 	r.GET("/", func(c *gin.Context) {
 		printMetrics(c, m)
 	})
-
 	r.GET("/ping", func(c *gin.Context) {
-		checkbd(c, storage.DB)
+		checkDB(c, storage.DB)
 	})
 
 	err := r.Run(addr)
