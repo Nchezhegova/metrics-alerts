@@ -31,7 +31,7 @@ func OpenDB(addr string) {
 		CREATE TABLE IF NOT EXISTS counter (
                          id SERIAL PRIMARY KEY,
                          name VARCHAR(255) NOT NULL,
-                         delta INT NOT NULL);`
+                         delta BIGINT NOT NULL);`
 	_, err = DB.Exec(createTableQuery)
 	if err != nil {
 		panic(err)
