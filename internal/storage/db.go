@@ -81,7 +81,6 @@ func (d *DBStorage) GaugeStorage(k string, v float64) {
 	}
 }
 
-// TODO убрать функцию из интерфейса
 func (d *DBStorage) GetStorage() interface{} {
 	arrd := []DBStorage{}
 
@@ -90,7 +89,6 @@ func (d *DBStorage) GetStorage() interface{} {
 		panic(err)
 	}
 	defer rows.Close()
-	defer rows.Err()
 	for rows.Next() {
 		if err := rows.Scan(&d.Name, &d.Value); err != nil {
 			panic(err)
@@ -105,10 +103,13 @@ func (d *DBStorage) GetStorage() interface{} {
 		d.MetricType = config.Counter
 		arrd = append(arrd, *d)
 	}
-
+	if err := rows.Err(); err != nil {
+		panic(err)
+	}
 	return arrd
 }
 
+// TODO убрать функцию из интерфейса
 func (d *DBStorage) SetStartData(storage MemStorage) {
 
 }
