@@ -49,7 +49,6 @@ func (s *MemStorage) GetCount(key string) (int64, bool) {
 }
 
 func (s *MemStorage) UpdateBatch(list []Metrics) error {
-	var err error
 	for _, metric := range list {
 		switch metric.MType {
 		case config.Gauge:
@@ -64,7 +63,7 @@ func (s *MemStorage) UpdateBatch(list []Metrics) error {
 			vNew, _ := s.GetCount(metric.ID)
 			metric.Delta = &vNew
 		default:
-			err := fmt.Errorf("unknowning metric type", err, err)
+			err := fmt.Errorf("unknowning metric type")
 			return err
 		}
 	}
