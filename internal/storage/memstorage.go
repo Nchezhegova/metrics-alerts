@@ -64,7 +64,7 @@ func (s *MemStorage) UpdateBatch(list []Metrics) error {
 			vNew, _ := s.GetCount(metric.ID)
 			metric.Delta = &vNew
 		default:
-			err := fmt.Errorf("unknowning metric type", err)
+			err := fmt.Errorf("unknowning metric type", err, err)
 			return err
 		}
 	}
