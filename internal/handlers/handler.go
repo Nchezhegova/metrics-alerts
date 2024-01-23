@@ -51,29 +51,6 @@ func updateMetrics(c *gin.Context, m storage.MStorage, syncWrite bool, filePath 
 		helpers.WriteFile(m, filePath)
 	}
 }
-func getMetric(c *gin.Context, m storage.MStorage) {
-	switch c.Param("type") {
-	case config.Counter:
-		v, exists := m.GetCount(c.Param("name"))
-		if exists {
-			c.JSON(http.StatusOK, v)
-		} else {
-			c.AbortWithStatus(http.StatusNotFound)
-			return
-		}
-	case config.Gauge:
-		v, exists := m.GetGauge(c.Param("name"))
-		if exists {
-			c.JSON(http.StatusOK, v)
-		} else {
-			c.AbortWithStatus(http.StatusNotFound)
-			return
-		}
-	default:
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
-	}
-}
 func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, filePath string) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -155,6 +132,98 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, f
 		helpers.WriteFile(m, filePath)
 	}
 }
+func updateBatchMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, filePath string) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	var metricsList []storage.Metrics
+	var b io.ReadCloser
+
+	if strings.Contains(c.GetHeader("Content-Encoding"), "gzip") {
+		gz, err := gzip.NewReader(c.Request.Body)
+		if err != nil {
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+		defer gz.Close()
+		b = gz
+		c.Header("Accept-Encoding", "gzip")
+
+	} else {
+		b = c.Request.Body
+	}
+
+	decoder := json.NewDecoder(b)
+	err := decoder.Decode(&metricsList)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	err = m.UpdateBatch(metricsList)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	if strings.Contains(c.GetHeader("Accept-Encoding"), "gzip") {
+		var compressBody bytes.Buffer
+		gzipWriter := gzip.NewWriter(&compressBody)
+
+		metricsByte, err := json.Marshal(metricsList)
+		if err != nil {
+			log.Logger.Info("Error convert to JSON:", zap.Error(err))
+			return
+		}
+
+		_, err = gzipWriter.Write(metricsByte)
+		if err != nil {
+			log.Logger.Info("Error convert to gzip.Writer:", zap.Error(err))
+			return
+		}
+
+		err = gzipWriter.Close()
+		if err != nil {
+			log.Logger.Info("Error closing compressed:", zap.Error(err))
+			return
+		}
+
+		compressedData := compressBody.String()
+		c.Header("Content-Encoding", "gzip")
+		c.Header("Content-Type", "application/json")
+
+		c.Data(http.StatusOK, "application/json", []byte(compressedData))
+	} else {
+		c.JSON(http.StatusOK, metricsList)
+	}
+
+	if syncWrite {
+		helpers.WriteFile(m, filePath)
+	}
+}
+
+func getMetric(c *gin.Context, m storage.MStorage) {
+	switch c.Param("type") {
+	case config.Counter:
+		v, exists := m.GetCount(c.Param("name"))
+		if exists {
+			c.JSON(http.StatusOK, v)
+		} else {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+	case config.Gauge:
+		v, exists := m.GetGauge(c.Param("name"))
+		if exists {
+			c.JSON(http.StatusOK, v)
+		} else {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+	default:
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+}
 func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 
 	var metrics storage.Metrics
@@ -224,6 +293,7 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 		//c.String(http.StatusOK, metrics)
 	}
 }
+
 func printMetrics(c *gin.Context, m storage.MStorage) {
 	res := m.GetStorage()
 	metricsByte, err := json.Marshal(res)
@@ -264,11 +334,6 @@ func checkDB(c *gin.Context, db *sql.DB) {
 			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
-		//err := storage.CheckConnect(db)
-		//if err != nil {
-		//	c.AbortWithStatus(http.StatusInternalServerError)
-		//	return
-		//}
 		c.Status(http.StatusOK)
 	} else {
 		c.AbortWithStatus(http.StatusInternalServerError)
@@ -300,6 +365,9 @@ func StartServ(m storage.MStorage, addr string, storeInterval int, filePath stri
 	})
 	r.GET("/ping", func(c *gin.Context) {
 		checkDB(c, storage.DB)
+	})
+	r.POST("/updates/", func(c *gin.Context) {
+		updateBatchMetricsFromBody(c, m, syncWrite, filePath)
 	})
 
 	err := r.Run(addr)

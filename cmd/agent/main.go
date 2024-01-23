@@ -29,7 +29,6 @@ func sendMetric(m storage.Metrics, addr string) {
 	}
 
 	//resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
-
 	//разобраться что за магия
 	var compressBody io.ReadWriter = &bytes.Buffer{}
 	gzipWriter := gzip.NewWriter(compressBody)
@@ -64,7 +63,50 @@ func sendMetric(m storage.Metrics, addr string) {
 		return
 	}
 }
+func sendBatchMetrics(m []storage.Metrics, addr string) {
+	url := fmt.Sprintf("http://%s/updates/", addr)
 
+	body, err := json.Marshal(m)
+	if err != nil {
+		fmt.Println("Error convert to JSON:", err)
+		return
+	}
+
+	//resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
+	//разобраться что за магия
+	var compressBody io.ReadWriter = &bytes.Buffer{}
+	gzipWriter := gzip.NewWriter(compressBody)
+	_, err = gzipWriter.Write(body)
+	if err != nil {
+		fmt.Println("Error convert to gzip.Writer:", err)
+		return
+	}
+	err = gzipWriter.Close()
+	if err != nil {
+		fmt.Println("Error closing compressed:", err)
+		return
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", url, compressBody)
+	if err != nil {
+		fmt.Println("Error creating request:", err)
+		return
+	}
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Error sending request:", err)
+		return
+	}
+	err = resp.Body.Close()
+	if err != nil {
+		fmt.Println("Error closing body:", err)
+		return
+	}
+}
 func collectMetrics() []storage.Metrics {
 	metrics := []storage.Metrics{}
 	var memStats runtime.MemStats
@@ -159,8 +201,8 @@ func main() {
 			MType: config.Counter,
 			Delta: &pollCount,
 		}
-
 		sendMetric(m, addr)
+		sendBatchMetrics(metrics, addr)
 		mu.Unlock()
 	}
 }

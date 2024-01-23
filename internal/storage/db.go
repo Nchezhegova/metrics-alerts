@@ -2,6 +2,7 @@ package storage
 
 import (
 	"database/sql"
+	"fmt"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	_ "github.com/lib/pq"
 )
@@ -80,6 +81,7 @@ func (d *DBStorage) GaugeStorage(k string, v float64) {
 	}
 }
 
+// TODO убрать функцию из интерфейса
 func (d *DBStorage) GetStorage() interface{} {
 	arrd := []DBStorage{}
 
@@ -87,7 +89,7 @@ func (d *DBStorage) GetStorage() interface{} {
 	if err != nil {
 		panic(err)
 	}
-
+	defer rows.Close()
 	for rows.Next() {
 		if err := rows.Scan(&d.Name, &d.Value); err != nil {
 			panic(err)
@@ -147,4 +149,35 @@ func (d *DBStorage) GetCount(key string) (int64, bool) {
 		}
 	}
 	return d.Delta, exists
+}
+
+func (d *DBStorage) UpdateBatch(list []Metrics) error {
+	tx, err := DB.Begin()
+	if err != nil {
+		panic(err)
+	}
+	for _, metric := range list {
+		switch metric.MType {
+		case config.Gauge:
+			k := metric.ID
+			v := metric.Value
+			d.GaugeStorage(k, *v)
+
+		case config.Counter:
+			k := metric.ID
+			v := metric.Delta
+			d.CountStorage(k, *v)
+			vNew, _ := d.GetCount(metric.ID)
+			metric.Delta = &vNew
+		default:
+			tx.Rollback()
+			err = fmt.Errorf("unknowning metric type", err)
+			return err
+		}
+	}
+	err = tx.Commit()
+	if err != nil {
+		panic(err)
+	}
+	return nil
 }

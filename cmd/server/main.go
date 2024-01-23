@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/handlers"
 	"github.com/Nchezhegova/metrics-alerts/internal/log"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
@@ -11,13 +12,6 @@ import (
 )
 
 func main() {
-	//var globalMemory = storage.MemStorage{}
-	//globalMemory.Counter = make(map[string]int64)
-	//globalMemory.Gauge = make(map[string]float64)
-
-	//var globalMemory storage.DBStorage{}
-	//var globalMemory storage.MStorage
-
 	var addr string
 	var storeInterval int
 	var filePath string
@@ -51,7 +45,7 @@ func main() {
 	}
 
 	var addrDB string
-	flag.StringVar(&addrDB, "d", "", "input addr db")
+	flag.StringVar(&addrDB, "d", config.DATEBASE, "input addr db")
 	if envDBaddr := os.Getenv("DATABASE_DSN"); envDBaddr != "" {
 		addrDB = envDBaddr
 	}
