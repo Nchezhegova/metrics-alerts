@@ -171,7 +171,7 @@ func (d *DBStorage) UpdateBatch(list []Metrics) error {
 			metric.Delta = &vNew
 		default:
 			tx.Rollback()
-			err = fmt.Errorf("unknowning metric type", err)
+			err = fmt.Errorf("unknowning metric type", err, err)
 			return err
 		}
 	}
