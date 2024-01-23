@@ -144,7 +144,7 @@ func (d *DBStorage) GetCount(key string) (int64, bool) {
 		if err != nil {
 			panic(err)
 		}
-		if d.Value > 0 {
+		if d.Delta > 0 {
 			exists = true
 		}
 	}
