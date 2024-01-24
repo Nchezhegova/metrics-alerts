@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/handlers"
 	"github.com/Nchezhegova/metrics-alerts/internal/log"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
@@ -15,6 +16,7 @@ func main() {
 	var storeInterval int
 	var filePath string
 	var restore bool
+
 	flag.StringVar(&addr, "a", "localhost:8080", "input addr serv")
 	flag.IntVar(&storeInterval, "i", 0, "input addr serv")
 	flag.StringVar(&filePath, "f", "/tmp/metrics-db.json", "input addr serv")
@@ -44,7 +46,8 @@ func main() {
 	}
 
 	var addrDB string
-	flag.StringVar(&addrDB, "d", "", "input addr db")
+
+	flag.StringVar(&addrDB, "d", config.DATEBASE, "input addr db")
 	if envDBaddr := os.Getenv("DATABASE_DSN"); envDBaddr != "" {
 		addrDB = envDBaddr
 	}

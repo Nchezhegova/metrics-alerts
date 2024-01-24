@@ -32,7 +32,6 @@ func (s *MemStorage) GetStorage() interface{} {
 	return *s
 }
 
-// TODO переписать не как функцию интерфейса
 func (s *MemStorage) SetStartData(storage MemStorage) {
 	s.Gauge = storage.Gauge
 	s.Counter = storage.Counter

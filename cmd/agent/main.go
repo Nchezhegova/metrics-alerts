@@ -19,18 +19,11 @@ import (
 	"time"
 )
 
-func sendMetric(m storage.Metrics, addr string) {
-	url := fmt.Sprintf("http://%s/update/", addr)
+var retryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
 
-	body, err := json.Marshal(m)
-	if err != nil {
-		fmt.Println("Error convert to JSON:", err)
-		return
-	}
-
-	//resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
-	//разобраться что за магия
+func commonSend(body []byte, url string) {
 	var compressBody io.ReadWriter = &bytes.Buffer{}
+	var err error
 	gzipWriter := gzip.NewWriter(compressBody)
 	_, err = gzipWriter.Write(body)
 	if err != nil {
@@ -52,16 +45,36 @@ func sendMetric(m storage.Metrics, addr string) {
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := client.Do(req)
+	var resp *http.Response
+	for i := 0; i < config.MaxRetries; i++ {
+		resp, err = client.Do(req)
+		if err == nil {
+			break
+		} else {
+			time.Sleep(retryDelays[i])
+			continue
+		}
+	}
 	if err != nil {
-		fmt.Println("Error sending request:", err)
+		fmt.Println("Max retries", err)
 		return
 	}
+
 	err = resp.Body.Close()
 	if err != nil {
 		fmt.Println("Error closing body:", err)
 		return
 	}
+}
+func sendMetric(m storage.Metrics, addr string) {
+	url := fmt.Sprintf("http://%s/update/", addr)
+
+	body, err := json.Marshal(m)
+	if err != nil {
+		fmt.Println("Error convert to JSON:", err)
+		return
+	}
+	commonSend(body, url)
 }
 func sendBatchMetrics(m []storage.Metrics, addr string) {
 	url := fmt.Sprintf("http://%s/updates/", addr)
@@ -71,42 +84,9 @@ func sendBatchMetrics(m []storage.Metrics, addr string) {
 		fmt.Println("Error convert to JSON:", err)
 		return
 	}
-
-	//resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
-	//разобраться что за магия
-	var compressBody io.ReadWriter = &bytes.Buffer{}
-	gzipWriter := gzip.NewWriter(compressBody)
-	_, err = gzipWriter.Write(body)
-	if err != nil {
-		fmt.Println("Error convert to gzip.Writer:", err)
-		return
-	}
-	err = gzipWriter.Close()
-	if err != nil {
-		fmt.Println("Error closing compressed:", err)
-		return
-	}
-
-	client := &http.Client{}
-	req, err := http.NewRequest("POST", url, compressBody)
-	if err != nil {
-		fmt.Println("Error creating request:", err)
-		return
-	}
-	req.Header.Set("Content-Encoding", "gzip")
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Println("Error sending request:", err)
-		return
-	}
-	err = resp.Body.Close()
-	if err != nil {
-		fmt.Println("Error closing body:", err)
-		return
-	}
+	commonSend(body, url)
 }
+
 func collectMetrics() []storage.Metrics {
 	metrics := []storage.Metrics{}
 	var memStats runtime.MemStats

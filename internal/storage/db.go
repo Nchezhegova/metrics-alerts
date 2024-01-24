@@ -4,7 +4,11 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
+	"github.com/jackc/pgconn"
+	"github.com/jackc/pgerrcode"
 	_ "github.com/lib/pq"
+	"slices"
+	"time"
 )
 
 type DBStorage struct {
@@ -15,6 +19,7 @@ type DBStorage struct {
 }
 
 var DB *sql.DB
+var retryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
 
 func OpenDB(addr string) {
 	var err error
@@ -45,17 +50,26 @@ func CheckConnect(db *sql.DB) error {
 
 func (d *DBStorage) CountStorage(k string, v int64) {
 	var count int
-	err := DB.QueryRow("SELECT COUNT(*) FROM counter WHERE name = $1", k).Scan(&count)
+	err, _, _ := withRetries(func() (error, *sql.Rows, *sql.Row) {
+		err := DB.QueryRow("SELECT COUNT(*) FROM counter WHERE name = $1", k).Scan(&count)
+		return err, nil, nil
+	})
 	if err != nil {
 		panic(err)
 	}
 	if count > 0 {
-		_, err := DB.Exec("UPDATE counter SET name=$1, delta=$2 WHERE name=$1", k, d.Delta+v)
+		err, _, _ := withRetries(func() (error, *sql.Rows, *sql.Row) {
+			_, err = DB.Exec("UPDATE counter SET name=$1, delta=$2 WHERE name=$1", k, d.Delta+v)
+			return err, nil, nil
+		})
 		if err != nil {
 			panic(err)
 		}
 	} else {
-		_, err := DB.Exec("INSERT INTO counter (name, delta) VALUES ($1, $2)", k, v)
+		err, _, _ := withRetries(func() (error, *sql.Rows, *sql.Row) {
+			_, err = DB.Exec("INSERT INTO counter (name, delta) VALUES ($1, $2)", k, v)
+			return err, nil, nil
+		})
 		if err != nil {
 			panic(err)
 		}
@@ -64,17 +78,26 @@ func (d *DBStorage) CountStorage(k string, v int64) {
 
 func (d *DBStorage) GaugeStorage(k string, v float64) {
 	var count int
-	err := DB.QueryRow("SELECT COUNT(*) FROM gauge WHERE name = $1", k).Scan(&count)
+	err, _, _ := withRetries(func() (error, *sql.Rows, *sql.Row) {
+		err := DB.QueryRow("SELECT COUNT(*) FROM gauge WHERE name = $1", k).Scan(&count)
+		return err, nil, nil
+	})
 	if err != nil {
 		panic(err)
 	}
 	if count > 0 {
-		_, err := DB.Exec("UPDATE gauge SET name=$1, value=$2 WHERE name=$1", k, v)
+		err, _, _ := withRetries(func() (error, *sql.Rows, *sql.Row) {
+			_, err = DB.Exec("UPDATE gauge SET name=$1, value=$2 WHERE name=$1", k, v)
+			return err, nil, nil
+		})
 		if err != nil {
 			panic(err)
 		}
 	} else {
-		_, err := DB.Exec("INSERT INTO gauge (name, value) VALUES ($1, $2)", k, v)
+		err, _, _ := withRetries(func() (error, *sql.Rows, *sql.Row) {
+			_, err = DB.Exec("INSERT INTO gauge (name, value) VALUES ($1, $2)", k, v)
+			return err, nil, nil
+		})
 		if err != nil {
 			panic(err)
 		}
@@ -83,8 +106,11 @@ func (d *DBStorage) GaugeStorage(k string, v float64) {
 
 func (d *DBStorage) GetStorage() interface{} {
 	arrd := []DBStorage{}
+	err, rows, _ := withRetries(func() (error, *sql.Rows, *sql.Row) {
+		rows, err := DB.Query("SELECT name, value FROM gauge")
+		return err, rows, nil
+	})
 
-	rows, err := DB.Query("SELECT name, value FROM gauge")
 	if err != nil {
 		panic(err)
 	}
@@ -96,9 +122,12 @@ func (d *DBStorage) GetStorage() interface{} {
 		d.MetricType = config.Gauge
 		arrd = append(arrd, *d)
 	}
-	row := DB.QueryRow("SELECT name, delta FROM counter")
+	_, _, row := withRetries(func() (error, *sql.Rows, *sql.Row) {
+		row := DB.QueryRow("SELECT name, delta FROM counter")
+		return nil, nil, row
+	})
 	if err := row.Scan(&d.Name, &d.Delta); err != nil {
-		//panic(err)
+		panic(err)
 	} else {
 		d.MetricType = config.Counter
 		arrd = append(arrd, *d)
@@ -109,7 +138,6 @@ func (d *DBStorage) GetStorage() interface{} {
 	return arrd
 }
 
-// TODO убрать функцию из интерфейса
 func (d *DBStorage) SetStartData(storage MemStorage) {
 
 }
@@ -117,12 +145,18 @@ func (d *DBStorage) SetStartData(storage MemStorage) {
 func (d *DBStorage) GetGauge(key string) (float64, bool) {
 	var exists bool
 	var count int
-	err := DB.QueryRow("SELECT COUNT(*) FROM gauge WHERE name = $1", key).Scan(&count)
+	err, _, _ := withRetries(func() (error, *sql.Rows, *sql.Row) {
+		err := DB.QueryRow("SELECT COUNT(*) FROM gauge WHERE name = $1", key).Scan(&count)
+		return err, nil, nil
+	})
 	if err != nil {
 		panic(err)
 	}
 	if count > 0 {
-		row := DB.QueryRow("SELECT value FROM gauge WHERE name = $1", key)
+		_, _, row := withRetries(func() (error, *sql.Rows, *sql.Row) {
+			row := DB.QueryRow("SELECT value FROM gauge WHERE name = $1", key)
+			return nil, nil, row
+		})
 		err := row.Scan(&d.Value)
 		if err != nil {
 			panic(err)
@@ -135,13 +169,18 @@ func (d *DBStorage) GetGauge(key string) (float64, bool) {
 func (d *DBStorage) GetCount(key string) (int64, bool) {
 	var exists bool
 	var count int
-	err := DB.QueryRow("SELECT COUNT(*) FROM counter WHERE name = $1", key).Scan(&count)
+	err, _, _ := withRetries(func() (error, *sql.Rows, *sql.Row) {
+		err := DB.QueryRow("SELECT COUNT(*) FROM counter WHERE name = $1", key).Scan(&count)
+		return err, nil, nil
+	})
 	if err != nil {
 		panic(err)
 	}
-
 	if count > 0 {
-		row := DB.QueryRow("SELECT delta FROM counter WHERE name = $1", key)
+		_, _, row := withRetries(func() (error, *sql.Rows, *sql.Row) {
+			row := DB.QueryRow("SELECT delta FROM counter WHERE name = $1", key)
+			return nil, nil, row
+		})
 		err := row.Scan(&d.Delta)
 		if err != nil {
 			panic(err)
@@ -182,4 +221,26 @@ func (d *DBStorage) UpdateBatch(list []Metrics) error {
 		panic(err)
 	}
 	return nil
+}
+
+func withRetries(operation func() (error, *sql.Rows, *sql.Row)) (error, *sql.Rows, *sql.Row) {
+	selectedErr := []string{pgerrcode.UniqueViolation, pgerrcode.ConnectionException, pgerrcode.ConnectionDoesNotExist,
+		pgerrcode.ConnectionFailure, pgerrcode.SQLClientUnableToEstablishSQLConnection,
+		pgerrcode.SQLServerRejectedEstablishmentOfSQLConnection,
+		pgerrcode.TransactionResolutionUnknown, pgerrcode.ProtocolViolation}
+
+	for i := 0; i < config.MaxRetries; i++ {
+		err, rows, row := operation()
+		if err == nil {
+			return nil, rows, row
+		}
+		if pgErr, ok := err.(*pgconn.PgError); ok {
+			if slices.Contains(selectedErr, pgErr.Code) {
+				time.Sleep(retryDelays[i])
+				continue
+			}
+		}
+		return err, nil, nil
+	}
+	return fmt.Errorf("Max retries"), nil, nil
 }
