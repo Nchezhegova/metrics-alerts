@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/handlers"
 	"github.com/Nchezhegova/metrics-alerts/internal/log"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
@@ -47,7 +46,7 @@ func main() {
 
 	var addrDB string
 
-	flag.StringVar(&addrDB, "d", config.DATEBASE, "input addr db")
+	flag.StringVar(&addrDB, "d", "", "input addr db")
 	if envDBaddr := os.Getenv("DATABASE_DSN"); envDBaddr != "" {
 		addrDB = envDBaddr
 	}
