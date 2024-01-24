@@ -50,25 +50,25 @@ func CheckConnect(db *sql.DB) error {
 
 func (d *DBStorage) CountStorage(k string, v int64) {
 	var count int
-	_, _, err := withRetries(func() (*sql.Rows, *sql.Row, error) {
+	_, err := withRetriesRow(func() (*sql.Row, error) {
 		err := DB.QueryRow("SELECT COUNT(*) FROM counter WHERE name = $1", k).Scan(&count)
-		return nil, nil, err
+		return nil, err
 	})
 	if err != nil {
 		panic(err)
 	}
 	if count > 0 {
-		_, _, err := withRetries(func() (*sql.Rows, *sql.Row, error) {
+		_, err := withRetriesRow(func() (*sql.Row, error) {
 			_, err := DB.Exec("UPDATE counter SET name=$1, delta=$2 WHERE name=$1", k, d.Delta+v)
-			return nil, nil, err
+			return nil, err
 		})
 		if err != nil {
 			panic(err)
 		}
 	} else {
-		_, _, err := withRetries(func() (*sql.Rows, *sql.Row, error) {
+		_, err := withRetriesRow(func() (*sql.Row, error) {
 			_, err := DB.Exec("INSERT INTO counter (name, delta) VALUES ($1, $2)", k, v)
-			return nil, nil, err
+			return nil, err
 		})
 		if err != nil {
 			panic(err)
@@ -78,25 +78,25 @@ func (d *DBStorage) CountStorage(k string, v int64) {
 
 func (d *DBStorage) GaugeStorage(k string, v float64) {
 	var count int
-	_, _, err := withRetries(func() (*sql.Rows, *sql.Row, error) {
+	_, err := withRetriesRow(func() (*sql.Row, error) {
 		err := DB.QueryRow("SELECT COUNT(*) FROM gauge WHERE name = $1", k).Scan(&count)
-		return nil, nil, err
+		return nil, err
 	})
 	if err != nil {
 		panic(err)
 	}
 	if count > 0 {
-		_, _, err := withRetries(func() (*sql.Rows, *sql.Row, error) {
+		_, err := withRetriesRow(func() (*sql.Row, error) {
 			_, err := DB.Exec("UPDATE gauge SET name=$1, value=$2 WHERE name=$1", k, v)
-			return nil, nil, err
+			return nil, err
 		})
 		if err != nil {
 			panic(err)
 		}
 	} else {
-		_, _, err := withRetries(func() (*sql.Rows, *sql.Row, error) {
+		_, err := withRetriesRow(func() (*sql.Row, error) {
 			_, err := DB.Exec("INSERT INTO gauge (name, value) VALUES ($1, $2)", k, v)
-			return nil, nil, err
+			return nil, err
 		})
 		if err != nil {
 			panic(err)
@@ -106,9 +106,9 @@ func (d *DBStorage) GaugeStorage(k string, v float64) {
 
 func (d *DBStorage) GetStorage() interface{} {
 	arrd := []DBStorage{}
-	rows, _, err := withRetries(func() (*sql.Rows, *sql.Row, error) {
+	rows, err := withRetriesRows(func() (*sql.Rows, error) {
 		rows, err := DB.Query("SELECT name, value FROM gauge")
-		return rows, nil, err
+		return rows, err
 	})
 
 	if err != nil {
@@ -122,9 +122,9 @@ func (d *DBStorage) GetStorage() interface{} {
 		d.MetricType = config.Gauge
 		arrd = append(arrd, *d)
 	}
-	_, row, _ := withRetries(func() (*sql.Rows, *sql.Row, error) {
+	row, _ := withRetriesRow(func() (*sql.Row, error) {
 		row := DB.QueryRow("SELECT name, delta FROM counter")
-		return nil, row, nil
+		return row, nil
 	})
 	if err := row.Scan(&d.Name, &d.Delta); err != nil {
 		panic(err)
@@ -145,17 +145,17 @@ func (d *DBStorage) SetStartData(storage MemStorage) {
 func (d *DBStorage) GetGauge(key string) (float64, bool) {
 	var exists bool
 	var count int
-	_, _, err := withRetries(func() (*sql.Rows, *sql.Row, error) {
+	_, err := withRetriesRow(func() (*sql.Row, error) {
 		err := DB.QueryRow("SELECT COUNT(*) FROM gauge WHERE name = $1", key).Scan(&count)
-		return nil, nil, err
+		return nil, err
 	})
 	if err != nil {
 		panic(err)
 	}
 	if count > 0 {
-		_, row, _ := withRetries(func() (*sql.Rows, *sql.Row, error) {
+		row, _ := withRetriesRow(func() (*sql.Row, error) {
 			row := DB.QueryRow("SELECT value FROM gauge WHERE name = $1", key)
-			return nil, row, nil
+			return row, nil
 		})
 		err := row.Scan(&d.Value)
 		if err != nil {
@@ -169,17 +169,17 @@ func (d *DBStorage) GetGauge(key string) (float64, bool) {
 func (d *DBStorage) GetCount(key string) (int64, bool) {
 	var exists bool
 	var count int
-	_, _, err := withRetries(func() (*sql.Rows, *sql.Row, error) {
+	_, err := withRetriesRow(func() (*sql.Row, error) {
 		err := DB.QueryRow("SELECT COUNT(*) FROM counter WHERE name = $1", key).Scan(&count)
-		return nil, nil, err
+		return nil, err
 	})
 	if err != nil {
 		panic(err)
 	}
 	if count > 0 {
-		_, row, _ := withRetries(func() (*sql.Rows, *sql.Row, error) {
+		row, _ := withRetriesRow(func() (*sql.Row, error) {
 			row := DB.QueryRow("SELECT delta FROM counter WHERE name = $1", key)
-			return nil, row, nil
+			return row, nil
 		})
 		err := row.Scan(&d.Delta)
 		if err != nil {
@@ -223,16 +223,16 @@ func (d *DBStorage) UpdateBatch(list []Metrics) error {
 	return nil
 }
 
-func withRetries(operation func() (*sql.Rows, *sql.Row, error)) (*sql.Rows, *sql.Row, error) {
+func withRetriesRow(operation func() (*sql.Row, error)) (*sql.Row, error) {
 	selectedErr := []string{pgerrcode.UniqueViolation, pgerrcode.ConnectionException, pgerrcode.ConnectionDoesNotExist,
 		pgerrcode.ConnectionFailure, pgerrcode.SQLClientUnableToEstablishSQLConnection,
 		pgerrcode.SQLServerRejectedEstablishmentOfSQLConnection,
 		pgerrcode.TransactionResolutionUnknown, pgerrcode.ProtocolViolation}
 
 	for i := 0; i < config.MaxRetries; i++ {
-		rows, row, err := operation()
+		row, err := operation()
 		if err == nil {
-			return rows, row, nil
+			return row, nil
 		}
 		if pgErr, ok := err.(*pgconn.PgError); ok {
 			if slices.Contains(selectedErr, pgErr.Code) {
@@ -240,7 +240,30 @@ func withRetries(operation func() (*sql.Rows, *sql.Row, error)) (*sql.Rows, *sql
 				continue
 			}
 		}
-		return nil, nil, err
+		return nil, err
 	}
-	return nil, nil, fmt.Errorf("max retries")
+	return nil, fmt.Errorf("max retries")
+}
+
+// Отдельная функция чтобы избежать ошибки "rows.Err must be checked" в go vet. Возникает когда не должно быть rows
+func withRetriesRows(operation func() (*sql.Rows, error)) (*sql.Rows, error) {
+	selectedErr := []string{pgerrcode.UniqueViolation, pgerrcode.ConnectionException, pgerrcode.ConnectionDoesNotExist,
+		pgerrcode.ConnectionFailure, pgerrcode.SQLClientUnableToEstablishSQLConnection,
+		pgerrcode.SQLServerRejectedEstablishmentOfSQLConnection,
+		pgerrcode.TransactionResolutionUnknown, pgerrcode.ProtocolViolation}
+
+	for i := 0; i < config.MaxRetries; i++ {
+		rows, err := operation()
+		if err == nil {
+			return rows, nil
+		}
+		if pgErr, ok := err.(*pgconn.PgError); ok {
+			if slices.Contains(selectedErr, pgErr.Code) {
+				time.Sleep(retryDelays[i])
+				continue
+			}
+		}
+		return nil, err
+	}
+	return nil, fmt.Errorf("max retries")
 }
