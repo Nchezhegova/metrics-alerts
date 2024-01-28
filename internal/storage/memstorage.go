@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
 )
@@ -11,24 +12,24 @@ type MemStorage struct {
 }
 
 type MStorage interface {
-	CountStorage(string, int64)
-	GaugeStorage(string, float64)
-	GetStorage() interface{}
-	GetCount(string) (int64, bool)
-	GetGauge(string) (float64, bool)
+	CountStorage(context.Context, string, int64)
+	GaugeStorage(context.Context, string, float64)
+	GetStorage(context.Context) interface{}
+	GetCount(context.Context, string) (int64, bool)
+	GetGauge(context.Context, string) (float64, bool)
 	SetStartData(MemStorage)
-	UpdateBatch(list []Metrics) error
+	UpdateBatch(context.Context, []Metrics) error
 }
 
-func (s *MemStorage) CountStorage(k string, v int64) {
+func (s *MemStorage) CountStorage(c context.Context, k string, v int64) {
 	s.Counter[k] += v
 }
 
-func (s *MemStorage) GaugeStorage(k string, v float64) {
+func (s *MemStorage) GaugeStorage(c context.Context, k string, v float64) {
 	s.Gauge[k] = v
 }
 
-func (s *MemStorage) GetStorage() interface{} {
+func (s *MemStorage) GetStorage(c context.Context) interface{} {
 	return *s
 }
 
@@ -37,29 +38,29 @@ func (s *MemStorage) SetStartData(storage MemStorage) {
 	s.Counter = storage.Counter
 }
 
-func (s *MemStorage) GetGauge(key string) (float64, bool) {
+func (s *MemStorage) GetGauge(c context.Context, key string) (float64, bool) {
 	v, exists := s.Gauge[key]
 	return v, exists
 }
 
-func (s *MemStorage) GetCount(key string) (int64, bool) {
+func (s *MemStorage) GetCount(c context.Context, key string) (int64, bool) {
 	v, exists := s.Counter[key]
 	return v, exists
 }
 
-func (s *MemStorage) UpdateBatch(list []Metrics) error {
+func (s *MemStorage) UpdateBatch(c context.Context, list []Metrics) error {
 	for _, metric := range list {
 		switch metric.MType {
 		case config.Gauge:
 			k := metric.ID
 			v := metric.Value
-			s.GaugeStorage(k, *v)
+			s.GaugeStorage(c, k, *v)
 
 		case config.Counter:
 			k := metric.ID
 			v := metric.Delta
-			s.CountStorage(k, *v)
-			vNew, _ := s.GetCount(metric.ID)
+			s.CountStorage(c, k, *v)
+			vNew, _ := s.GetCount(c, metric.ID)
 			metric.Delta = &vNew
 		default:
 			err := fmt.Errorf("unknowning metric type")

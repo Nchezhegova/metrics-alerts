@@ -32,7 +32,7 @@ func updateMetrics(c *gin.Context, m storage.MStorage, syncWrite bool, filePath 
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-		m.GaugeStorage(k, v)
+		m.GaugeStorage(c, k, v)
 
 	case config.Counter:
 		k := c.Param("name")
@@ -41,7 +41,7 @@ func updateMetrics(c *gin.Context, m storage.MStorage, syncWrite bool, filePath 
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-		m.CountStorage(k, v)
+		m.CountStorage(c, k, v)
 	default:
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
@@ -83,13 +83,13 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, f
 	case config.Gauge:
 		k := metrics.ID
 		v := metrics.Value
-		m.GaugeStorage(k, *v)
+		m.GaugeStorage(c, k, *v)
 
 	case config.Counter:
 		k := metrics.ID
 		v := metrics.Delta
-		m.CountStorage(k, *v)
-		vNew, _ := m.GetCount(metrics.ID)
+		m.CountStorage(c, k, *v)
+		vNew, _ := m.GetCount(c, metrics.ID)
 		metrics.Delta = &vNew
 
 	default:
@@ -160,7 +160,7 @@ func updateBatchMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bo
 		return
 	}
 
-	err = m.UpdateBatch(metricsList)
+	err = m.UpdateBatch(c, metricsList)
 	if err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
@@ -204,7 +204,7 @@ func updateBatchMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bo
 func getMetric(c *gin.Context, m storage.MStorage) {
 	switch c.Param("type") {
 	case config.Counter:
-		v, exists := m.GetCount(c.Param("name"))
+		v, exists := m.GetCount(c, c.Param("name"))
 		if exists {
 			c.JSON(http.StatusOK, v)
 		} else {
@@ -212,7 +212,7 @@ func getMetric(c *gin.Context, m storage.MStorage) {
 			return
 		}
 	case config.Gauge:
-		v, exists := m.GetGauge(c.Param("name"))
+		v, exists := m.GetGauge(c, c.Param("name"))
 		if exists {
 			c.JSON(http.StatusOK, v)
 		} else {
@@ -241,7 +241,7 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 
 	switch metrics.MType {
 	case config.Counter:
-		v, exists := m.GetCount(metrics.ID)
+		v, exists := m.GetCount(c, metrics.ID)
 		if exists {
 			metrics.Delta = &v
 		} else {
@@ -249,7 +249,7 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 			return
 		}
 	case config.Gauge:
-		v, exists := m.GetGauge(metrics.ID)
+		v, exists := m.GetGauge(c, metrics.ID)
 		if exists {
 			metrics.Value = &v
 		} else {
@@ -295,7 +295,7 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 }
 
 func printMetrics(c *gin.Context, m storage.MStorage) {
-	res := m.GetStorage()
+	res := m.GetStorage(c)
 	metricsByte, err := json.Marshal(res)
 	if err != nil {
 		log.Logger.Info("Error convert to JSON:", zap.Error(err))
@@ -337,12 +337,12 @@ func checkDB(c *gin.Context, db *sql.DB) {
 		c.Status(http.StatusOK)
 	} else {
 		c.AbortWithStatus(http.StatusInternalServerError)
-		return
 	}
 }
 
 func StartServ(m storage.MStorage, addr string, storeInterval int, filePath string, restore bool) {
 	r := gin.Default()
+	r.ContextWithFallback = true
 
 	r.Use(log.GinLogger(log.Logger), gin.Recovery())
 

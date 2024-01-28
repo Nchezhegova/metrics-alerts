@@ -1,12 +1,15 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
+	"github.com/Nchezhegova/metrics-alerts/internal/log"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
 	_ "github.com/lib/pq"
+	"go.uber.org/zap"
 	"slices"
 	"time"
 )
@@ -48,92 +51,92 @@ func CheckConnect(db *sql.DB) error {
 	return err
 }
 
-func (d *DBStorage) CountStorage(k string, v int64) {
+func (d *DBStorage) CountStorage(c context.Context, k string, v int64) {
 	var count int
 	_, err := withRetriesRow(func() (*sql.Row, error) {
-		err := DB.QueryRow("SELECT COUNT(*) FROM counter WHERE name = $1", k).Scan(&count)
+		err := DB.QueryRowContext(c, "SELECT COUNT(*) FROM counter WHERE name = $1", k).Scan(&count)
 		return nil, err
 	})
 	if err != nil {
-		panic(err)
+		log.Logger.Info("Error DB:", zap.Error(err))
 	}
 	if count > 0 {
 		_, err := withRetriesRow(func() (*sql.Row, error) {
-			_, err := DB.Exec("UPDATE counter SET name=$1, delta=$2 WHERE name=$1", k, d.Delta+v)
+			_, err := DB.ExecContext(c, "UPDATE counter SET name=$1, delta=$2 WHERE name=$1", k, d.Delta+v)
 			return nil, err
 		})
 		if err != nil {
-			panic(err)
+			log.Logger.Info("Error DB:", zap.Error(err))
 		}
 	} else {
 		_, err := withRetriesRow(func() (*sql.Row, error) {
-			_, err := DB.Exec("INSERT INTO counter (name, delta) VALUES ($1, $2)", k, v)
+			_, err := DB.ExecContext(c, "INSERT INTO counter (name, delta) VALUES ($1, $2)", k, v)
 			return nil, err
 		})
 		if err != nil {
-			panic(err)
+			log.Logger.Info("Error DB:", zap.Error(err))
 		}
 	}
 }
 
-func (d *DBStorage) GaugeStorage(k string, v float64) {
+func (d *DBStorage) GaugeStorage(c context.Context, k string, v float64) {
 	var count int
 	_, err := withRetriesRow(func() (*sql.Row, error) {
-		err := DB.QueryRow("SELECT COUNT(*) FROM gauge WHERE name = $1", k).Scan(&count)
+		err := DB.QueryRowContext(c, "SELECT COUNT(*) FROM gauge WHERE name = $1", k).Scan(&count)
 		return nil, err
 	})
 	if err != nil {
-		panic(err)
+		log.Logger.Info("Error DB:", zap.Error(err))
 	}
 	if count > 0 {
 		_, err := withRetriesRow(func() (*sql.Row, error) {
-			_, err := DB.Exec("UPDATE gauge SET name=$1, value=$2 WHERE name=$1", k, v)
+			_, err := DB.ExecContext(c, "UPDATE gauge SET name=$1, value=$2 WHERE name=$1", k, v)
 			return nil, err
 		})
 		if err != nil {
-			panic(err)
+			log.Logger.Info("Error DB:", zap.Error(err))
 		}
 	} else {
 		_, err := withRetriesRow(func() (*sql.Row, error) {
-			_, err := DB.Exec("INSERT INTO gauge (name, value) VALUES ($1, $2)", k, v)
+			_, err := DB.ExecContext(c, "INSERT INTO gauge (name, value) VALUES ($1, $2)", k, v)
 			return nil, err
 		})
 		if err != nil {
-			panic(err)
+			log.Logger.Info("Error DB:", zap.Error(err))
 		}
 	}
 }
 
-func (d *DBStorage) GetStorage() interface{} {
+func (d *DBStorage) GetStorage(c context.Context) interface{} {
 	arrd := []DBStorage{}
 	rows, err := withRetriesRows(func() (*sql.Rows, error) {
-		rows, err := DB.Query("SELECT name, value FROM gauge")
+		rows, err := DB.QueryContext(c, "SELECT name, value FROM gauge")
 		return rows, err
 	})
 
 	if err != nil {
-		panic(err)
+		log.Logger.Info("Error DB:", zap.Error(err))
 	}
 	defer rows.Close()
 	for rows.Next() {
 		if err := rows.Scan(&d.Name, &d.Value); err != nil {
-			panic(err)
+			log.Logger.Info("Error DB:", zap.Error(err))
 		}
 		d.MetricType = config.Gauge
 		arrd = append(arrd, *d)
 	}
 	row, _ := withRetriesRow(func() (*sql.Row, error) {
-		row := DB.QueryRow("SELECT name, delta FROM counter")
+		row := DB.QueryRowContext(c, "SELECT name, delta FROM counter")
 		return row, nil
 	})
 	if err := row.Scan(&d.Name, &d.Delta); err != nil {
-		panic(err)
+		log.Logger.Info("Error DB:", zap.Error(err))
 	} else {
 		d.MetricType = config.Counter
 		arrd = append(arrd, *d)
 	}
 	if err := rows.Err(); err != nil {
-		panic(err)
+		log.Logger.Info("Error DB:", zap.Error(err))
 	}
 	return arrd
 }
@@ -142,48 +145,48 @@ func (d *DBStorage) SetStartData(storage MemStorage) {
 
 }
 
-func (d *DBStorage) GetGauge(key string) (float64, bool) {
+func (d *DBStorage) GetGauge(c context.Context, key string) (float64, bool) {
 	var exists bool
 	var count int
 	_, err := withRetriesRow(func() (*sql.Row, error) {
-		err := DB.QueryRow("SELECT COUNT(*) FROM gauge WHERE name = $1", key).Scan(&count)
+		err := DB.QueryRowContext(c, "SELECT COUNT(*) FROM gauge WHERE name = $1", key).Scan(&count)
 		return nil, err
 	})
 	if err != nil {
-		panic(err)
+		log.Logger.Info("Error DB:", zap.Error(err))
 	}
 	if count > 0 {
 		row, _ := withRetriesRow(func() (*sql.Row, error) {
-			row := DB.QueryRow("SELECT value FROM gauge WHERE name = $1", key)
+			row := DB.QueryRowContext(c, "SELECT value FROM gauge WHERE name = $1", key)
 			return row, nil
 		})
 		err := row.Scan(&d.Value)
 		if err != nil {
-			panic(err)
+			log.Logger.Info("Error DB:", zap.Error(err))
 		}
 		exists = true
 	}
 	return d.Value, exists
 }
 
-func (d *DBStorage) GetCount(key string) (int64, bool) {
+func (d *DBStorage) GetCount(c context.Context, key string) (int64, bool) {
 	var exists bool
 	var count int
 	_, err := withRetriesRow(func() (*sql.Row, error) {
-		err := DB.QueryRow("SELECT COUNT(*) FROM counter WHERE name = $1", key).Scan(&count)
+		err := DB.QueryRowContext(c, "SELECT COUNT(*) FROM counter WHERE name = $1", key).Scan(&count)
 		return nil, err
 	})
 	if err != nil {
-		panic(err)
+		log.Logger.Info("Error DB:", zap.Error(err))
 	}
 	if count > 0 {
 		row, _ := withRetriesRow(func() (*sql.Row, error) {
-			row := DB.QueryRow("SELECT delta FROM counter WHERE name = $1", key)
+			row := DB.QueryRowContext(c, "SELECT delta FROM counter WHERE name = $1", key)
 			return row, nil
 		})
 		err := row.Scan(&d.Delta)
 		if err != nil {
-			panic(err)
+			log.Logger.Info("Error DB:", zap.Error(err))
 		}
 		if d.Delta > 0 {
 			exists = true
@@ -192,23 +195,23 @@ func (d *DBStorage) GetCount(key string) (int64, bool) {
 	return d.Delta, exists
 }
 
-func (d *DBStorage) UpdateBatch(list []Metrics) error {
+func (d *DBStorage) UpdateBatch(c context.Context, list []Metrics) error {
 	tx, err := DB.Begin()
 	if err != nil {
-		panic(err)
+		log.Logger.Info("Error DB:", zap.Error(err))
 	}
 	for _, metric := range list {
 		switch metric.MType {
 		case config.Gauge:
 			k := metric.ID
 			v := metric.Value
-			d.GaugeStorage(k, *v)
+			d.GaugeStorage(c, k, *v)
 
 		case config.Counter:
 			k := metric.ID
 			v := metric.Delta
-			d.CountStorage(k, *v)
-			vNew, _ := d.GetCount(metric.ID)
+			d.CountStorage(c, k, *v)
+			vNew, _ := d.GetCount(c, metric.ID)
 			metric.Delta = &vNew
 		default:
 			tx.Rollback()
@@ -218,7 +221,7 @@ func (d *DBStorage) UpdateBatch(list []Metrics) error {
 	}
 	err = tx.Commit()
 	if err != nil {
-		panic(err)
+		log.Logger.Info("Error DB:", zap.Error(err))
 	}
 	return nil
 }
