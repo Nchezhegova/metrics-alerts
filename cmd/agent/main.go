@@ -7,7 +7,10 @@ import (
 	"flag"
 	"fmt"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
+	"github.com/Nchezhegova/metrics-alerts/internal/log"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
+	"go.uber.org/zap"
+	"io"
 	"math/rand"
 	"net/http"
 	"os"
@@ -18,49 +21,71 @@ import (
 	"time"
 )
 
-func sendMetric(m storage.Metrics, addr string) {
-	url := fmt.Sprintf("http://%s/update/", addr)
+var retryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
 
-	body, err := json.Marshal(m)
-	if err != nil {
-		fmt.Println("Error convert to JSON:", err)
-		return
-	}
-
-	//resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
-
-	var compressBody bytes.Buffer
-	gzipWriter := gzip.NewWriter(&compressBody)
+func commonSend(body []byte, url string) {
+	var compressBody io.ReadWriter = &bytes.Buffer{}
+	var err error
+	gzipWriter := gzip.NewWriter(compressBody)
 	_, err = gzipWriter.Write(body)
 	if err != nil {
-		fmt.Println("Error convert to gzip.Writer:", err)
+		log.Logger.Info("Error convert to gzip.Writer:", zap.Error(err))
 		return
 	}
 	err = gzipWriter.Close()
 	if err != nil {
-		fmt.Println("Error closing compressed:", err)
+		log.Logger.Info("Error closing compressed:", zap.Error(err))
 		return
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", url, &compressBody)
+	req, err := http.NewRequest("POST", url, compressBody)
 	if err != nil {
-		fmt.Println("Error creating request:", err)
+		log.Logger.Info("Error creating request:", zap.Error(err))
 		return
 	}
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := client.Do(req)
+	var resp *http.Response
+	for i := 0; i < config.MaxRetries; i++ {
+		resp, err = client.Do(req)
+		if err == nil {
+			err = resp.Body.Close()
+			if err != nil {
+				log.Logger.Info("Error closing body:", zap.Error(err))
+				return
+			}
+			break
+		} else {
+			time.Sleep(retryDelays[i])
+			continue
+		}
+	}
 	if err != nil {
-		fmt.Println("Error sending request:", err)
+		log.Logger.Info("Max retries", zap.Error(err))
 		return
 	}
-	err = resp.Body.Close()
+}
+func sendMetric(m storage.Metrics, addr string) {
+	url := fmt.Sprintf("http://%s/update/", addr)
+
+	body, err := json.Marshal(m)
 	if err != nil {
-		fmt.Println("Error closing body:", err)
+		log.Logger.Info("Error convert to JSON:", zap.Error(err))
 		return
 	}
+	commonSend(body, url)
+}
+func sendBatchMetrics(m []storage.Metrics, addr string) {
+	url := fmt.Sprintf("http://%s/updates/", addr)
+
+	body, err := json.Marshal(m)
+	if err != nil {
+		log.Logger.Info("Error convert to JSON:", zap.Error(err))
+		return
+	}
+	commonSend(body, url)
 }
 
 func collectMetrics() []storage.Metrics {
@@ -115,14 +140,14 @@ func main() {
 	if envReportInterval := os.Getenv("REPORT_INTERVAL"); envReportInterval != "" {
 		ri, err = strconv.Atoi(envReportInterval)
 		if err != nil {
-			fmt.Println("Invalid parameter REPORT_INTERVAL:", err)
+			log.Logger.Info("Invalid parameter REPORT_INTERVAL:", zap.Error(err))
 			return
 		}
 	}
 	if envPoolInterval := os.Getenv("POLL_INTERVAL"); envPoolInterval != "" {
 		pi, err = strconv.Atoi(envPoolInterval)
 		if err != nil {
-			fmt.Println("Invalid parameter POLL_INTERVAL:", err)
+			log.Logger.Info("Invalid parameter POLL_INTERVAL:", zap.Error(err))
 			return
 		}
 	}
@@ -157,8 +182,8 @@ func main() {
 			MType: config.Counter,
 			Delta: &pollCount,
 		}
-
 		sendMetric(m, addr)
+		sendBatchMetrics(metrics, addr)
 		mu.Unlock()
 	}
 }

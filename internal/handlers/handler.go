@@ -3,12 +3,14 @@ package handlers
 import (
 	"bytes"
 	"compress/gzip"
+	"database/sql"
 	"encoding/json"
-	"fmt"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/helpers"
+	"github.com/Nchezhegova/metrics-alerts/internal/log"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"strconv"
@@ -30,7 +32,7 @@ func updateMetrics(c *gin.Context, m storage.MStorage, syncWrite bool, filePath 
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-		m.GaugeStorage(k, v)
+		m.GaugeStorage(c, k, v)
 
 	case config.Counter:
 		k := c.Param("name")
@@ -39,7 +41,7 @@ func updateMetrics(c *gin.Context, m storage.MStorage, syncWrite bool, filePath 
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-		m.CountStorage(k, v)
+		m.CountStorage(c, k, v)
 	default:
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
@@ -49,29 +51,6 @@ func updateMetrics(c *gin.Context, m storage.MStorage, syncWrite bool, filePath 
 		helpers.WriteFile(m, filePath)
 	}
 }
-func getMetric(c *gin.Context, m storage.MStorage) {
-	switch c.Param("type") {
-	case config.Counter:
-		v, exists := m.GetCount(c.Param("name"))
-		if exists {
-			c.JSON(http.StatusOK, v)
-		} else {
-			c.AbortWithStatus(http.StatusNotFound)
-			return
-		}
-	case config.Gauge:
-		v, exists := m.GetGauge(c.Param("name"))
-		if exists {
-			c.JSON(http.StatusOK, v)
-		} else {
-			c.AbortWithStatus(http.StatusNotFound)
-			return
-		}
-	default:
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
-	}
-}
 func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, filePath string) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -79,7 +58,6 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, f
 	var metrics storage.Metrics
 	var b io.ReadCloser
 
-	//if c.GetHeader("Content-Encoding") == "gzip" {
 	if strings.Contains(c.GetHeader("Content-Encoding"), "gzip") {
 		gz, err := gzip.NewReader(c.Request.Body)
 		if err != nil {
@@ -105,13 +83,13 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, f
 	case config.Gauge:
 		k := metrics.ID
 		v := metrics.Value
-		m.GaugeStorage(k, *v)
+		m.GaugeStorage(c, k, *v)
 
 	case config.Counter:
 		k := metrics.ID
 		v := metrics.Delta
-		m.CountStorage(k, *v)
-		vNew, _ := m.GetCount(metrics.ID)
+		m.CountStorage(c, k, *v)
+		vNew, _ := m.GetCount(c, metrics.ID)
 		metrics.Delta = &vNew
 
 	default:
@@ -119,26 +97,25 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, f
 		return
 	}
 
-	//if c.GetHeader("Accept-Encoding") == "gzip" {
 	if strings.Contains(c.GetHeader("Accept-Encoding"), "gzip") {
 		var compressBody bytes.Buffer
 		gzipWriter := gzip.NewWriter(&compressBody)
 
 		metricsByte, err := json.Marshal(metrics)
 		if err != nil {
-			fmt.Println("Error convert to JSON:", err)
+			log.Logger.Info("Error convert to JSON:", zap.Error(err))
 			return
 		}
 
 		_, err = gzipWriter.Write(metricsByte)
 		if err != nil {
-			fmt.Println("Error convert to gzip.Writer:", err)
+			log.Logger.Info("Error convert to gzip.Writer:", zap.Error(err))
 			return
 		}
 
 		err = gzipWriter.Close()
 		if err != nil {
-			fmt.Println("Error closing compressed:", err)
+			log.Logger.Info("Error closing compressed:", zap.Error(err))
 			return
 		}
 
@@ -153,6 +130,98 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, f
 
 	if syncWrite {
 		helpers.WriteFile(m, filePath)
+	}
+}
+func updateBatchMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, filePath string) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	var metricsList []storage.Metrics
+	var b io.ReadCloser
+
+	if strings.Contains(c.GetHeader("Content-Encoding"), "gzip") {
+		gz, err := gzip.NewReader(c.Request.Body)
+		if err != nil {
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+		defer gz.Close()
+		b = gz
+		c.Header("Accept-Encoding", "gzip")
+
+	} else {
+		b = c.Request.Body
+	}
+
+	decoder := json.NewDecoder(b)
+	err := decoder.Decode(&metricsList)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	err = m.UpdateBatch(c, metricsList)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	if strings.Contains(c.GetHeader("Accept-Encoding"), "gzip") {
+		var compressBody bytes.Buffer
+		gzipWriter := gzip.NewWriter(&compressBody)
+
+		metricsByte, err := json.Marshal(metricsList)
+		if err != nil {
+			log.Logger.Info("Error convert to JSON:", zap.Error(err))
+			return
+		}
+
+		_, err = gzipWriter.Write(metricsByte)
+		if err != nil {
+			log.Logger.Info("Error convert to gzip.Writer:", zap.Error(err))
+			return
+		}
+
+		err = gzipWriter.Close()
+		if err != nil {
+			log.Logger.Info("Error closing compressed:", zap.Error(err))
+			return
+		}
+
+		compressedData := compressBody.String()
+		c.Header("Content-Encoding", "gzip")
+		c.Header("Content-Type", "application/json")
+
+		c.Data(http.StatusOK, "application/json", []byte(compressedData))
+	} else {
+		c.JSON(http.StatusOK, metricsList)
+	}
+
+	if syncWrite {
+		helpers.WriteFile(m, filePath)
+	}
+}
+
+func getMetric(c *gin.Context, m storage.MStorage) {
+	switch c.Param("type") {
+	case config.Counter:
+		v, exists := m.GetCount(c, c.Param("name"))
+		if exists {
+			c.JSON(http.StatusOK, v)
+		} else {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+	case config.Gauge:
+		v, exists := m.GetGauge(c, c.Param("name"))
+		if exists {
+			c.JSON(http.StatusOK, v)
+		} else {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+	default:
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
 	}
 }
 func getMetricFromBody(c *gin.Context, m storage.MStorage) {
@@ -171,16 +240,16 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 	}
 
 	switch metrics.MType {
-	case "counter":
-		v, exists := m.GetCount(metrics.ID)
+	case config.Counter:
+		v, exists := m.GetCount(c, metrics.ID)
 		if exists {
 			metrics.Delta = &v
 		} else {
 			c.AbortWithStatus(http.StatusNotFound)
 			return
 		}
-	case "gauge":
-		v, exists := m.GetGauge(metrics.ID)
+	case config.Gauge:
+		v, exists := m.GetGauge(c, metrics.ID)
 		if exists {
 			metrics.Value = &v
 		} else {
@@ -198,19 +267,19 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 
 		metricsByte, err := json.Marshal(metrics)
 		if err != nil {
-			fmt.Println("Error convert to JSON:", err)
+			log.Logger.Info("Error convert to JSON:", zap.Error(err))
 			return
 		}
 
 		_, err = gzipWriter.Write(metricsByte)
 		if err != nil {
-			fmt.Println("Error convert to gzip.Writer:", err)
+			log.Logger.Info("Error convert to gzip.Writer:", zap.Error(err))
 			return
 		}
 
 		err = gzipWriter.Close()
 		if err != nil {
-			fmt.Println("Error closing compressed:", err)
+			log.Logger.Info("Error closing compressed:", zap.Error(err))
 			return
 		}
 
@@ -221,14 +290,15 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage) {
 		c.Data(http.StatusOK, "application/json", []byte(compressedData))
 	} else {
 		c.JSON(http.StatusOK, metrics)
+		//c.String(http.StatusOK, metrics)
 	}
 }
 
 func printMetrics(c *gin.Context, m storage.MStorage) {
-	res := m.GetStorage()
+	res := m.GetStorage(c)
 	metricsByte, err := json.Marshal(res)
 	if err != nil {
-		fmt.Println("Error convert to JSON:", err)
+		log.Logger.Info("Error convert to JSON:", zap.Error(err))
 		return
 	}
 	if c.GetHeader("Accept-Encoding") == "gzip" {
@@ -237,13 +307,13 @@ func printMetrics(c *gin.Context, m storage.MStorage) {
 
 		_, err = gzipWriter.Write(metricsByte)
 		if err != nil {
-			fmt.Println("Error convert to gzip.Writer:", err)
+			log.Logger.Info("Error convert to gzip.Writer:", zap.Error(err))
 			return
 		}
 
 		err = gzipWriter.Close()
 		if err != nil {
-			fmt.Println("Error closing compressed:", err)
+			log.Logger.Info("Error closing compressed:", zap.Error(err))
 			return
 		}
 
@@ -257,12 +327,24 @@ func printMetrics(c *gin.Context, m storage.MStorage) {
 	}
 }
 
+func checkDB(c *gin.Context, db *sql.DB) {
+	if db != nil {
+		err := storage.CheckConnect(db)
+		if err != nil {
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+		c.Status(http.StatusOK)
+	} else {
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}
+}
+
 func StartServ(m storage.MStorage, addr string, storeInterval int, filePath string, restore bool) {
 	r := gin.Default()
+	r.ContextWithFallback = true
 
-	// и тут инициализация.
-	Logger := helpers.InitLogger()
-	r.Use(helpers.GinLogger(Logger), gin.Recovery())
+	r.Use(log.GinLogger(log.Logger), gin.Recovery())
 
 	syncWrite := helpers.SetWriterFile(m, storeInterval, filePath, restore)
 
@@ -280,6 +362,12 @@ func StartServ(m storage.MStorage, addr string, storeInterval int, filePath stri
 	})
 	r.GET("/", func(c *gin.Context) {
 		printMetrics(c, m)
+	})
+	r.GET("/ping", func(c *gin.Context) {
+		checkDB(c, storage.DB)
+	})
+	r.POST("/updates/", func(c *gin.Context) {
+		updateBatchMetricsFromBody(c, m, syncWrite, filePath)
 	})
 
 	err := r.Run(addr)

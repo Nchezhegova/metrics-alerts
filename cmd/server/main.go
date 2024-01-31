@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"github.com/Nchezhegova/metrics-alerts/internal/handlers"
-	"github.com/Nchezhegova/metrics-alerts/internal/helpers"
+	"github.com/Nchezhegova/metrics-alerts/internal/log"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
 	"go.uber.org/zap"
 	"os"
@@ -11,16 +11,11 @@ import (
 )
 
 func main() {
-	var globalMemory = storage.MemStorage{}
-	globalMemory.Counter = make(map[string]int64)
-	globalMemory.Gauge = make(map[string]float64)
-	//тут инициализация
-	Logger := helpers.InitLogger()
-
 	var addr string
 	var storeInterval int
 	var filePath string
 	var restore bool
+
 	flag.StringVar(&addr, "a", "localhost:8080", "input addr serv")
 	flag.IntVar(&storeInterval, "i", 0, "input addr serv")
 	flag.StringVar(&filePath, "f", "/tmp/metrics-db.json", "input addr serv")
@@ -32,8 +27,7 @@ func main() {
 	if envStoreInterval := os.Getenv("STORE_INTERVAL"); envStoreInterval != "" {
 		storeIntervalInt, err := strconv.Atoi(envStoreInterval)
 		if err != nil {
-			//fmt.Println("Error convert STORE_INTERVAL to int:", err)
-			Logger.Info("Error convert STORE_INTERVAL to int:", zap.Error(err))
+			log.Logger.Info("Error convert STORE_INTERVAL to int:", zap.Error(err))
 			return
 		}
 		storeInterval = storeIntervalInt
@@ -44,12 +38,29 @@ func main() {
 	if envRestore := os.Getenv("RESTORE"); envRestore != "" {
 		restoreValue, err := strconv.ParseBool(envRestore)
 		if err != nil {
-			//fmt.Println("Error convert RESTORE to bool:", err)
-			Logger.Info("Error convert RESTORE to bool:", zap.Error(err))
+			log.Logger.Info("Error convert RESTORE to bool:", zap.Error(err))
 			return
 		}
 		restore = restoreValue
 	}
 
-	handlers.StartServ(&globalMemory, addr, storeInterval, filePath, restore)
+	var addrDB string
+
+	flag.StringVar(&addrDB, "d", "", "input addr db")
+	if envDBaddr := os.Getenv("DATABASE_DSN"); envDBaddr != "" {
+		addrDB = envDBaddr
+	}
+	if addrDB != "" {
+		DBMemory := storage.DBStorage{}
+		storage.OpenDB(addrDB)
+		handlers.StartServ(&DBMemory, addr, storeInterval, filePath, restore)
+	} else {
+		globalMemory := storage.MemStorage{}
+		globalMemory.Counter = make(map[string]int64)
+		globalMemory.Gauge = make(map[string]float64)
+		handlers.StartServ(&globalMemory, addr, storeInterval, filePath, restore)
+	}
+
+	defer log.Logger.Sync()
+	defer storage.DB.Close()
 }
