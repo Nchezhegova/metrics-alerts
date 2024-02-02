@@ -15,11 +15,13 @@ func main() {
 	var storeInterval int
 	var filePath string
 	var restore bool
+	var hash string
 
 	flag.StringVar(&addr, "a", "localhost:8080", "input addr serv")
 	flag.IntVar(&storeInterval, "i", 0, "input addr serv")
 	flag.StringVar(&filePath, "f", "/tmp/metrics-db.json", "input addr serv")
 	flag.BoolVar(&restore, "r", true, "input addr serv")
+	flag.StringVar(&hash, "k", "123", "input hash")
 	flag.Parse()
 	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
 		addr = envRunAddr
@@ -43,6 +45,9 @@ func main() {
 		}
 		restore = restoreValue
 	}
+	if envHashKey := os.Getenv("KEY"); envHashKey != "" {
+		hash = envHashKey
+	}
 
 	var addrDB string
 
@@ -53,12 +58,12 @@ func main() {
 	if addrDB != "" {
 		DBMemory := storage.DBStorage{}
 		storage.OpenDB(addrDB)
-		handlers.StartServ(&DBMemory, addr, storeInterval, filePath, restore)
+		handlers.StartServ(&DBMemory, addr, storeInterval, filePath, restore, hash)
 	} else {
 		globalMemory := storage.MemStorage{}
 		globalMemory.Counter = make(map[string]int64)
 		globalMemory.Gauge = make(map[string]float64)
-		handlers.StartServ(&globalMemory, addr, storeInterval, filePath, restore)
+		handlers.StartServ(&globalMemory, addr, storeInterval, filePath, restore, hash)
 	}
 
 	defer log.Logger.Sync()

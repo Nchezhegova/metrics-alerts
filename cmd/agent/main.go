@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
+	"github.com/Nchezhegova/metrics-alerts/internal/helpers"
 	"github.com/Nchezhegova/metrics-alerts/internal/log"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
 	"go.uber.org/zap"
@@ -23,9 +25,10 @@ import (
 
 var retryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
 
-func commonSend(body []byte, url string) {
+func commonSend(body []byte, url string, hashkey string) {
 	var compressBody io.ReadWriter = &bytes.Buffer{}
 	var err error
+
 	gzipWriter := gzip.NewWriter(compressBody)
 	_, err = gzipWriter.Write(body)
 	if err != nil {
@@ -47,6 +50,12 @@ func commonSend(body []byte, url string) {
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Content-Type", "application/json")
 
+	if hashkey != "" {
+		compressedData := compressBody.(*bytes.Buffer).Bytes()
+		req.Header.Set("HashSHA256", base64.StdEncoding.EncodeToString(helpers.CalculateHash(compressedData, hashkey)))
+		//fmt.Println(string(helpers.CalculateHash(compressedData, hashkey)))
+	}
+
 	var resp *http.Response
 	for i := 0; i < config.MaxRetries; i++ {
 		resp, err = client.Do(req)
@@ -67,7 +76,7 @@ func commonSend(body []byte, url string) {
 		return
 	}
 }
-func sendMetric(m storage.Metrics, addr string) {
+func sendMetric(m storage.Metrics, addr string, hashkey string) {
 	url := fmt.Sprintf("http://%s/update/", addr)
 
 	body, err := json.Marshal(m)
@@ -75,9 +84,9 @@ func sendMetric(m storage.Metrics, addr string) {
 		log.Logger.Info("Error convert to JSON:", zap.Error(err))
 		return
 	}
-	commonSend(body, url)
+	commonSend(body, url, hashkey)
 }
-func sendBatchMetrics(m []storage.Metrics, addr string) {
+func sendBatchMetrics(m []storage.Metrics, addr string, hashkey string) {
 	url := fmt.Sprintf("http://%s/updates/", addr)
 
 	body, err := json.Marshal(m)
@@ -85,9 +94,8 @@ func sendBatchMetrics(m []storage.Metrics, addr string) {
 		log.Logger.Info("Error convert to JSON:", zap.Error(err))
 		return
 	}
-	commonSend(body, url)
+	commonSend(body, url, hashkey)
 }
-
 func collectMetrics() []storage.Metrics {
 	metrics := []storage.Metrics{}
 	var memStats runtime.MemStats
@@ -127,11 +135,13 @@ func main() {
 	var addr string
 	var pi int
 	var ri int
+	var hash string
 	var err error
 
 	flag.IntVar(&pi, "p", 2, "pollInterval")
 	flag.IntVar(&ri, "r", 10, "reportInterval")
 	flag.StringVar(&addr, "a", "localhost:8080", "input addr serv")
+	flag.StringVar(&hash, "k", "123", "input hash")
 	flag.Parse()
 
 	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
@@ -150,6 +160,9 @@ func main() {
 			log.Logger.Info("Invalid parameter POLL_INTERVAL:", zap.Error(err))
 			return
 		}
+	}
+	if envHashKey := os.Getenv("KEY"); envHashKey != "" {
+		hash = envHashKey
 	}
 
 	pollInterval := time.Duration(pi) * time.Second
@@ -175,15 +188,15 @@ func main() {
 		time.Sleep(reportInterval)
 		mu.Lock()
 		for index := range metrics {
-			sendMetric(metrics[index], addr)
+			sendMetric(metrics[index], addr, hash)
 		}
 		m := storage.Metrics{
 			ID:    "PollCount",
 			MType: config.Counter,
 			Delta: &pollCount,
 		}
-		sendMetric(m, addr)
-		sendBatchMetrics(metrics, addr)
+		sendMetric(m, addr, hash)
+		sendBatchMetrics(metrics, addr, hash)
 		mu.Unlock()
 	}
 }
