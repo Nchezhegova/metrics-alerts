@@ -136,7 +136,8 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, f
 		if hashKey != "" {
 			c.Header("HashSHA256", base64.StdEncoding.EncodeToString(helpers.CalculateHash(metricsByte, hashKey)))
 		}
-		c.String(http.StatusOK, string(metricsByte))
+		//c.String(http.StatusOK, string(metricsByte))
+		c.Data(http.StatusOK, "application/json", metricsByte)
 	}
 
 	if syncWrite {
@@ -215,7 +216,8 @@ func updateBatchMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bo
 		if hashKey != "" {
 			c.Header("HashSHA256", base64.StdEncoding.EncodeToString(helpers.CalculateHash(metricsByte, hashKey)))
 		}
-		c.String(http.StatusOK, string(metricsByte))
+		//c.String(http.StatusOK, string(metricsByte))
+		c.Data(http.StatusOK, "application/json", metricsByte)
 	}
 
 	if syncWrite {
@@ -321,7 +323,8 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage, hashKey string) {
 		if hashKey != "" {
 			c.Header("HashSHA256", base64.StdEncoding.EncodeToString(helpers.CalculateHash(metricsByte, hashKey)))
 		}
-		c.String(http.StatusOK, string(metricsByte))
+		//c.String(http.StatusOK, string(metricsByte))
+		c.Data(http.StatusOK, "application/json", metricsByte)
 	}
 }
 
