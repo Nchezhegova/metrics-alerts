@@ -289,7 +289,7 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage, hashKey string) {
 		log.Logger.Info("Error convert to JSON:", zap.Error(err))
 		return
 	}
-	if c.GetHeader("Accept-Encoding") == "gzip" {
+	if strings.Contains(c.GetHeader("Accept-Encoding"), "gzip") {
 		//var compressBody bytes.Buffer
 		//gzipWriter := gzip.NewWriter(&compressBody)
 		//
@@ -395,6 +395,7 @@ func checkHash(c *gin.Context, hashKey string) bool {
 			return false
 		}
 	}
+	c.AbortWithStatus(http.StatusBadRequest)
 	return false
 }
 
