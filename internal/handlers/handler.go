@@ -385,7 +385,7 @@ func checkHash(c *gin.Context, hashKey string) bool {
 		hashServe := base64.StdEncoding.EncodeToString(helpers.CalculateHash(buf.Bytes(), hashKey))
 		hashAgent := (c.GetHeader("HashSHA256"))
 		if hashServe == hashAgent {
-			//c.Request.Body = io.NopCloser(&buf)
+			c.Request.Body = io.NopCloser(&buf)
 			return true
 		} else {
 			c.AbortWithStatus(http.StatusBadRequest)
