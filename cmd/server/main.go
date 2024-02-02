@@ -21,7 +21,7 @@ func main() {
 	flag.IntVar(&storeInterval, "i", 0, "input addr serv")
 	flag.StringVar(&filePath, "f", "/tmp/metrics-db.json", "input addr serv")
 	flag.BoolVar(&restore, "r", true, "input addr serv")
-	flag.StringVar(&hash, "k", "123", "input hash")
+	flag.StringVar(&hash, "k", "", "input hash")
 	flag.Parse()
 	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
 		addr = envRunAddr

@@ -141,7 +141,7 @@ func main() {
 	flag.IntVar(&pi, "p", 2, "pollInterval")
 	flag.IntVar(&ri, "r", 10, "reportInterval")
 	flag.StringVar(&addr, "a", "localhost:8080", "input addr serv")
-	flag.StringVar(&hash, "k", "123", "input hash")
+	flag.StringVar(&hash, "k", "", "input hash")
 	flag.Parse()
 
 	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
