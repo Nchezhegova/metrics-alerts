@@ -165,15 +165,13 @@ func collectgopsutilMetrics() []storage.Metrics {
 
 func workers(jobs <-chan storage.Metrics, addr string, hashkey string) {
 	for {
-		select {
-		case job, ok := <-jobs:
-			if !ok {
-				return
-				fmt.Println("empty")
-			}
-			fmt.Println("try " + job.ID)
-			sendMetric(job, addr, hashkey)
+		job, ok := <-jobs
+		if !ok {
+			return
+			//fmt.Println("empty")
 		}
+		fmt.Println("try " + job.ID)
+		sendMetric(job, addr, hashkey)
 	}
 }
 
@@ -230,6 +228,7 @@ func main() {
 	var mu sync.Mutex
 
 	jobs := make(chan storage.Metrics, rate)
+	defer close(jobs)
 	//results := make(chan storage.Metrics, rate)
 
 	go func() {
@@ -253,12 +252,13 @@ func main() {
 
 	}()
 
+	for w := 1; w <= rate; w++ {
+		go workers(jobs, addr, hash)
+	}
+
 	for {
 		time.Sleep(reportInterval)
 		mu.Lock()
-		for w := 1; w <= rate; w++ {
-			go workers(jobs, addr, hash)
-		}
 		for index := range metrics {
 			jobs <- metrics[index]
 		}
@@ -275,5 +275,4 @@ func main() {
 		//sendBatchMetrics(metrics, addr, hash)
 		mu.Unlock()
 	}
-	close(jobs)
 }
