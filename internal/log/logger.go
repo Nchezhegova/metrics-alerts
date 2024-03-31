@@ -37,11 +37,3 @@ func GinLogger(logger *zap.Logger) gin.HandlerFunc {
 		)
 	}
 }
-
-//func InitLogger() *zap.Logger {
-//	logger, err := zap.NewProduction()
-//
-//	//перетащить в мейн
-//	defer logger.Sync()
-//	return logger
-//}

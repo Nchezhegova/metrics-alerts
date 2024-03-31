@@ -329,11 +329,13 @@ func checkHash(c *gin.Context, hashKey string) bool {
 			return false
 		}
 	}
-	//c.AbortWithStatus(http.StatusBadRequest)
 	return true
 }
 
 func StartServ(m storage.MStorage, addr string, storeInterval int, filePath string, restore bool, hashKey string) {
+	go func() {
+		http.ListenAndServe(":6060", nil)
+	}()
 	r := gin.Default()
 	r.ContextWithFallback = true
 

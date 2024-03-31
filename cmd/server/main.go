@@ -2,10 +2,11 @@ package main
 
 import (
 	"flag"
-	"github.com/Nchezhegova/metrics-alerts/internal/handlers"
+	"github.com/Nchezhegova/metrics-alerts/internal/http/handlers"
 	"github.com/Nchezhegova/metrics-alerts/internal/log"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
 	"go.uber.org/zap"
+	_ "net/http/pprof"
 	"os"
 	"strconv"
 )
@@ -65,7 +66,6 @@ func main() {
 		globalMemory.Gauge = make(map[string]float64)
 		handlers.StartServ(&globalMemory, addr, storeInterval, filePath, restore, hash)
 	}
-
 	defer log.Logger.Sync()
 	defer storage.DB.Close()
 }

@@ -135,7 +135,7 @@ func collectgopsutilMetrics() []storage.Metrics {
 	metrics := []storage.Metrics{}
 	memoryStats, err := mem.VirtualMemory()
 	if err != nil {
-		//log.Println("Error getting memory stats:", err)
+		log.Logger.Info("Error getting memory stats:", zap.Error(err))
 	} else {
 		total := float64(memoryStats.Total)
 		m := storage.Metrics{
@@ -168,9 +168,7 @@ func workers(jobs <-chan storage.Metrics, addr string, hashkey string) {
 		job, ok := <-jobs
 		if !ok {
 			return
-			//fmt.Println("empty")
 		}
-		fmt.Println("try " + job.ID)
 		sendMetric(job, addr, hashkey)
 	}
 }
@@ -187,7 +185,6 @@ func main() {
 	flag.IntVar(&ri, "r", 10, "reportInterval")
 	flag.StringVar(&addr, "a", "localhost:8080", "input addr serv")
 	flag.StringVar(&hash, "k", "", "input hash")
-	//
 	flag.IntVar(&rate, "l", 5, "rate limit")
 	flag.Parse()
 
@@ -224,12 +221,11 @@ func main() {
 
 	var pollCount int64
 	var metrics []storage.Metrics
-	var metrics2 []storage.Metrics
+	var psMetrics []storage.Metrics
 	var mu sync.Mutex
 
 	jobs := make(chan storage.Metrics, rate)
 	defer close(jobs)
-	//results := make(chan storage.Metrics, rate)
 
 	go func() {
 		for {
@@ -245,7 +241,7 @@ func main() {
 	go func() {
 		for {
 			mu.Lock()
-			metrics2 = collectgopsutilMetrics()
+			psMetrics = collectgopsutilMetrics()
 			mu.Unlock()
 			time.Sleep(pollInterval)
 		}
@@ -262,17 +258,15 @@ func main() {
 		for index := range metrics {
 			jobs <- metrics[index]
 		}
-		for index := range metrics2 {
-			jobs <- metrics2[index]
+		for index := range psMetrics {
+			jobs <- psMetrics[index]
 		}
 		m := storage.Metrics{
 			ID:    "PollCount",
 			MType: config.Counter,
 			Delta: &pollCount,
 		}
-		fmt.Println("Send poool count ")
 		sendMetric(m, addr, hash)
-		//sendBatchMetrics(metrics, addr, hash)
 		mu.Unlock()
 	}
 }

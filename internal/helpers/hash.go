@@ -11,8 +11,3 @@ func CalculateHash(body []byte, key string) []byte {
 	h.Write(body)
 	return h.Sum(nil)
 }
-
-//
-//func SetHashHeader(metricsByte []byte) string {
-//
-//}
