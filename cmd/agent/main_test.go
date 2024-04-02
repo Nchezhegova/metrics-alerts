@@ -8,6 +8,13 @@ import (
 	"testing"
 )
 
+func TestCollectgopsutilMetrics(t *testing.T) {
+	var metrics = collectgopsutilMetrics()
+	if len(metrics) != 3 {
+		t.Errorf("not correct metrics len")
+	}
+}
+
 func TestCollectMetrics(t *testing.T) {
 	var metrics = collectMetrics()
 	if len(metrics) != 28 {

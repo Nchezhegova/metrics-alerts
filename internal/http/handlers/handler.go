@@ -21,6 +21,7 @@ import (
 
 var mu sync.Mutex
 
+// updateMetrics updates one metric from url params
 func updateMetrics(c *gin.Context, m storage.MStorage, syncWrite bool, filePath string) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -52,6 +53,8 @@ func updateMetrics(c *gin.Context, m storage.MStorage, syncWrite bool, filePath 
 		helpers.WriteFile(m, filePath)
 	}
 }
+
+// updateMetricsFromBody updates one metric from body
 func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, filePath string, hashKey string) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -122,6 +125,8 @@ func updateMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, f
 		helpers.WriteFile(m, filePath)
 	}
 }
+
+// updateBatchMetricsFromBody updates a batch of metrics from the body
 func updateBatchMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bool, filePath string, hashKey string) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -181,6 +186,7 @@ func updateBatchMetricsFromBody(c *gin.Context, m storage.MStorage, syncWrite bo
 	}
 }
 
+// getMetric displays the value by the key that came in the url
 func getMetric(c *gin.Context, m storage.MStorage) {
 	switch c.Param("type") {
 	case config.Counter:
@@ -204,6 +210,8 @@ func getMetric(c *gin.Context, m storage.MStorage) {
 		return
 	}
 }
+
+// getMetric displays the value by the key that came in the body
 func getMetricFromBody(c *gin.Context, m storage.MStorage, hashKey string) {
 
 	var metrics storage.Metrics
@@ -262,6 +270,7 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage, hashKey string) {
 	}
 }
 
+// printMetrics prints all metrics
 func printMetrics(c *gin.Context, m storage.MStorage) {
 	res := m.GetStorage(c)
 	metricsByte, err := json.Marshal(res)
@@ -269,7 +278,7 @@ func printMetrics(c *gin.Context, m storage.MStorage) {
 		log.Logger.Info("Error convert to JSON:", zap.Error(err))
 		return
 	}
-	if c.GetHeader("Accept-Encoding") == "gzip" {
+	if strings.Contains(c.GetHeader("Accept-Encoding"), "gzip") {
 		var compressBody bytes.Buffer
 		gzipWriter := gzip.NewWriter(&compressBody)
 
@@ -290,11 +299,11 @@ func printMetrics(c *gin.Context, m storage.MStorage) {
 		c.Header("Content-Type", "text/html")
 
 		c.Data(http.StatusOK, "text/html", []byte(compressedData))
-	} else {
-		c.String(http.StatusOK, string(metricsByte))
 	}
+	c.String(http.StatusOK, string(metricsByte))
 }
 
+// checkDB checks DB connection
 func checkDB(c *gin.Context, db *sql.DB) {
 	if db != nil {
 		err := storage.CheckConnect(db)
@@ -308,6 +317,7 @@ func checkDB(c *gin.Context, db *sql.DB) {
 	}
 }
 
+// checkHash checks hash-key from request
 func checkHash(c *gin.Context, hashKey string) bool {
 	if hashKey == "" {
 		return true
@@ -332,10 +342,8 @@ func checkHash(c *gin.Context, hashKey string) bool {
 	return true
 }
 
+// StartServ starts the server and routes requests
 func StartServ(m storage.MStorage, addr string, storeInterval int, filePath string, restore bool, hashKey string) {
-	go func() {
-		http.ListenAndServe(":6060", nil)
-	}()
 	r := gin.Default()
 	r.ContextWithFallback = true
 

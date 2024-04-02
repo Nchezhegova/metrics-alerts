@@ -1,5 +1,6 @@
 package main
 
+// Import section with a brief description.
 import (
 	"bytes"
 	"compress/gzip"
@@ -24,8 +25,10 @@ import (
 	"time"
 )
 
-var retryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
+// RetryDelays holds the retry delays.
+var RetryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
 
+// commonSend sends data with metrics independent of the body
 func commonSend(body []byte, url string, hashkey string) {
 	var compressBody io.ReadWriter = &bytes.Buffer{}
 	var err error
@@ -67,7 +70,7 @@ func commonSend(body []byte, url string, hashkey string) {
 			}
 			break
 		} else {
-			time.Sleep(retryDelays[i])
+			time.Sleep(RetryDelays[i])
 			continue
 		}
 	}
@@ -76,6 +79,8 @@ func commonSend(body []byte, url string, hashkey string) {
 		return
 	}
 }
+
+// sendMetric specifies the url and prepares the body with the one metric
 func sendMetric(m storage.Metrics, addr string, hashkey string) {
 	url := fmt.Sprintf("http://%s/update/", addr)
 
@@ -86,6 +91,8 @@ func sendMetric(m storage.Metrics, addr string, hashkey string) {
 	}
 	commonSend(body, url, hashkey)
 }
+
+// sendBatchMetrics specifies the URL and prepares the body with a bunch of metrics
 func sendBatchMetrics(m []storage.Metrics, addr string, hashkey string) {
 	url := fmt.Sprintf("http://%s/updates/", addr)
 
@@ -96,6 +103,8 @@ func sendBatchMetrics(m []storage.Metrics, addr string, hashkey string) {
 	}
 	commonSend(body, url, hashkey)
 }
+
+// collectMetrics collects metrics MemStats and RandomValue
 func collectMetrics() []storage.Metrics {
 	metrics := []storage.Metrics{}
 	var memStats runtime.MemStats
@@ -131,6 +140,7 @@ func collectMetrics() []storage.Metrics {
 	return metrics
 }
 
+// collectgopsutilMetrics  collects metrics VirtualMemory
 func collectgopsutilMetrics() []storage.Metrics {
 	metrics := []storage.Metrics{}
 	memoryStats, err := mem.VirtualMemory()
