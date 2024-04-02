@@ -79,7 +79,7 @@ func Example_updateBatchMetricsFromBody() {
 		Counter: make(map[string]int64),
 	}
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	var v float64 = 10.5
+	var v = 10.5
 	var d int64 = 5
 	metricsList := []storage.Metrics{
 		{MType: "gauge", ID: "test1", Value: &v},
@@ -101,8 +101,9 @@ func Example_getMetric() {
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
 	}
-	m.GaugeStorage(nil, "test_gauge", 10.5)
-	m.CountStorage(nil, "test_counter", 5)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	m.GaugeStorage(ctx, "test_gauge", 10.5)
+	m.CountStorage(ctx, "test_counter", 5)
 
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Params = []gin.Param{
@@ -176,8 +177,9 @@ func Example_printMetrics() {
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
 	}
-	m.GaugeStorage(nil, "test_gauge", 10.5)
-	m.CountStorage(nil, "test_counter", 5)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	m.GaugeStorage(ctx, "test_gauge", 10.5)
+	m.CountStorage(ctx, "test_counter", 5)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 
 	c.Request, _ = http.NewRequest("GET", "/", nil)

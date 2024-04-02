@@ -208,6 +208,7 @@ func TestStartServ(t *testing.T) {
 
 	req, _ := http.NewRequest("GET", "http://localhost:8099/value/gauge/w/", nil)
 	resp, _ := client.Do(req)
+	_ = resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }

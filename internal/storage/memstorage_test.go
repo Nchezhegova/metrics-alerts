@@ -66,7 +66,7 @@ func TestUpdateBatch(t *testing.T) {
 		Counter: make(map[string]int64),
 	}
 
-	var v float64 = 10.5
+	var v = 10.5
 	var d int64 = 5
 
 	testMetrics := []Metrics{
