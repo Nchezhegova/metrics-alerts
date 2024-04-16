@@ -49,11 +49,11 @@ func TestDBStorage_CountStorage(t *testing.T) {
 				Delta:      tt.fields.Delta,
 			}
 			d.CountStorage(tt.args.c, tt.args.k, tt.args.v)
-			new_value, _ := d.GetCount(tt.args.c, tt.args.k)
-			assert.Equal(t, tt.args.v, new_value)
+			newValue, _ := d.GetCount(tt.args.c, tt.args.k)
+			assert.Equal(t, tt.args.v, newValue)
 			d.CountStorage(tt.args.c, tt.args.k, tt.args.v)
-			new_value, _ = d.GetCount(tt.args.c, tt.args.k)
-			assert.Equal(t, tt.args.v*2, new_value)
+			newValue, _ = d.GetCount(tt.args.c, tt.args.k)
+			assert.Equal(t, tt.args.v*2, newValue)
 		})
 	}
 }
@@ -100,11 +100,11 @@ func TestDBStorage_GaugeStorage(t *testing.T) {
 				Delta:      tt.fields.Delta,
 			}
 			d.GaugeStorage(tt.args.c, tt.args.k, tt.args.v)
-			new_value, _ := d.GetGauge(tt.args.c, tt.args.k)
-			assert.Equal(t, tt.args.v, new_value)
+			newValue, _ := d.GetGauge(tt.args.c, tt.args.k)
+			assert.Equal(t, tt.args.v, newValue)
 			d.GaugeStorage(tt.args.c, tt.args.k, tt.args.v*2)
-			new_value, _ = d.GetGauge(tt.args.c, tt.args.k)
-			assert.Equal(t, tt.args.v*2, new_value)
+			newValue, _ = d.GetGauge(tt.args.c, tt.args.k)
+			assert.Equal(t, tt.args.v*2, newValue)
 		})
 	}
 }
@@ -172,7 +172,7 @@ func TestDBStorage_UpdateBatch(t *testing.T) {
 	uniqNameGauge := uuid.New().String()
 	uniqNameCounter := uuid.New().String()
 	var kg int64 = 5
-	var kc float64 = 5.5
+	var kc = 5.5
 	tests := []struct {
 		name   string
 		fields fields
@@ -212,10 +212,10 @@ func TestDBStorage_UpdateBatch(t *testing.T) {
 				Delta:      tt.fields.Delta,
 			}
 			d.UpdateBatch(tt.args.c, tt.args.list)
-			new_value_counter, _ := d.GetCount(tt.args.c, tt.args.list[0].ID)
-			assert.Equal(t, kg, new_value_counter)
-			new_value_gauge, _ := d.GetGauge(tt.args.c, tt.args.list[1].ID)
-			assert.Equal(t, kc, new_value_gauge)
+			newValueCounter, _ := d.GetCount(tt.args.c, tt.args.list[0].ID)
+			assert.Equal(t, kg, newValueCounter)
+			newValueGauge, _ := d.GetGauge(tt.args.c, tt.args.list[1].ID)
+			assert.Equal(t, kc, newValueGauge)
 		})
 	}
 }
