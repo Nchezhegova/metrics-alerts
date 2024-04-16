@@ -62,7 +62,7 @@ func (d *DBStorage) CountStorage(c context.Context, k string, v int64) {
 	}
 	if count > 0 {
 		_, err := withRetriesRow(func() (*sql.Row, error) {
-			_, err := DB.ExecContext(c, "UPDATE counter SET name=$1, delta=$2 WHERE name=$1", k, d.Delta+v)
+			_, err := DB.ExecContext(c, "UPDATE counter SET name=$1, delta=delta+$2 WHERE name=$1", k, v)
 			return nil, err
 		})
 		if err != nil {
@@ -160,7 +160,7 @@ func (d *DBStorage) GetGauge(c context.Context, key string) (float64, bool) {
 			row := DB.QueryRowContext(c, "SELECT value FROM gauge WHERE name = $1", key)
 			return row, nil
 		})
-		err := row.Scan(&d.Value)
+		err = row.Scan(&d.Value)
 		if err != nil {
 			log.Logger.Info("Error DB:", zap.Error(err))
 		}

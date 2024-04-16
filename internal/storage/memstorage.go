@@ -11,6 +11,7 @@ type MemStorage struct {
 	Counter map[string]int64   `json:"counter"`
 }
 
+//go:generate  mockgen -build_flags=--mod=mod -destination=mocks/mock_store.go -package=mocks . MStorage
 type MStorage interface {
 	CountStorage(context.Context, string, int64)
 	GaugeStorage(context.Context, string, float64)

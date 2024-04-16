@@ -222,7 +222,7 @@ func getMetricFromBody(c *gin.Context, m storage.MStorage, hashKey string) {
 		return
 	}
 
-	if err := json.Unmarshal(buf.Bytes(), &metrics); err != nil {
+	if err = json.Unmarshal(buf.Bytes(), &metrics); err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}

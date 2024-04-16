@@ -18,15 +18,48 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"os/exec"
 	"reflect"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 // RetryDelays holds the retry delays.
 var RetryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
+
+// link flags
+var (
+	buildVersion string = "N/A"
+	buildDate    string = "N/A"
+	buildCommit  string = "N/A"
+)
+
+// printBuildInfo prints the build information.
+func printBuildInfo() {
+	// Command to get the commit value
+	cmd := exec.Command("git", "log", "--pretty=format:'%h'", "--abbrev-commit", "-1")
+	output, err := cmd.Output()
+	if err != nil {
+		log.Logger.Info("Ошибка при получении значения коммита:", zap.Error(err))
+	} else {
+		buildCommit = strings.Trim(string(output), "'\n")
+	}
+
+	// Command to get the date value
+	cmd = exec.Command("git", "log", "--pretty=format:%cd", "--date=short", "-1")
+	output, err = cmd.Output()
+	if err != nil {
+		log.Logger.Info("Ошибка при получении значения даты:", zap.Error(err))
+	} else {
+		buildDate = strings.TrimSpace(string(output))
+	}
+	log.Logger.Info("Build version:", zap.String("version", buildVersion))
+	log.Logger.Info("Build date:", zap.String("date", buildDate))
+	log.Logger.Info("Build commit:", zap.String("commit", buildCommit))
+}
 
 // commonSend sends data with metrics independent of the body
 func commonSend(body []byte, url string, hashkey string) {
@@ -191,6 +224,8 @@ func main() {
 	var err error
 	var rate int
 
+	printBuildInfo()
+
 	flag.IntVar(&pi, "p", 2, "pollInterval")
 	flag.IntVar(&ri, "r", 10, "reportInterval")
 	flag.StringVar(&addr, "a", "localhost:8080", "input addr serv")
@@ -247,7 +282,7 @@ func main() {
 		}
 
 	}()
-	//gopsutil
+	// gopsutil
 	go func() {
 		for {
 			mu.Lock()
