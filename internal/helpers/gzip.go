@@ -10,13 +10,6 @@ import (
 func CompressResp(metricsByte []byte) bytes.Buffer {
 	var compressBody bytes.Buffer
 	gzipWriter := gzip.NewWriter(&compressBody)
-
-	//metricsByte, err := json.Marshal(metrics)
-	//if err != nil {
-	//	log.Logger.Info("Error convert to JSON:", zap.Error(err))
-	//	return *bytes.NewBuffer(nil)
-	//}
-
 	_, err := gzipWriter.Write(metricsByte)
 	if err != nil {
 		log.Logger.Info("Error convert to gzip.Writer:", zap.Error(err))

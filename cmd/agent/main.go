@@ -1,5 +1,6 @@
 package main
 
+// Import section with a brief description.
 import (
 	"bytes"
 	"compress/gzip"
@@ -17,15 +18,50 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"os/exec"
 	"reflect"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
-var retryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
+// RetryDelays holds the retry delays.
+var RetryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
 
+// link flags
+var (
+	buildVersion string = "N/A"
+	buildDate    string = "N/A"
+	buildCommit  string = "N/A"
+)
+
+// printBuildInfo prints the build information.
+func printBuildInfo() {
+	// Command to get the commit value
+	cmd := exec.Command("git", "log", "--pretty=format:'%h'", "--abbrev-commit", "-1")
+	output, err := cmd.Output()
+	if err != nil {
+		log.Logger.Info("Ошибка при получении значения коммита:", zap.Error(err))
+	} else {
+		buildCommit = strings.Trim(string(output), "'\n")
+	}
+
+	// Command to get the date value
+	cmd = exec.Command("git", "log", "--pretty=format:%cd", "--date=short", "-1")
+	output, err = cmd.Output()
+	if err != nil {
+		log.Logger.Info("Ошибка при получении значения даты:", zap.Error(err))
+	} else {
+		buildDate = strings.TrimSpace(string(output))
+	}
+	log.Logger.Info("Build version:", zap.String("version", buildVersion))
+	log.Logger.Info("Build date:", zap.String("date", buildDate))
+	log.Logger.Info("Build commit:", zap.String("commit", buildCommit))
+}
+
+// commonSend sends data with metrics independent of the body
 func commonSend(body []byte, url string, hashkey string) {
 	var compressBody io.ReadWriter = &bytes.Buffer{}
 	var err error
@@ -67,7 +103,7 @@ func commonSend(body []byte, url string, hashkey string) {
 			}
 			break
 		} else {
-			time.Sleep(retryDelays[i])
+			time.Sleep(RetryDelays[i])
 			continue
 		}
 	}
@@ -76,6 +112,8 @@ func commonSend(body []byte, url string, hashkey string) {
 		return
 	}
 }
+
+// sendMetric specifies the url and prepares the body with the one metric
 func sendMetric(m storage.Metrics, addr string, hashkey string) {
 	url := fmt.Sprintf("http://%s/update/", addr)
 
@@ -86,6 +124,8 @@ func sendMetric(m storage.Metrics, addr string, hashkey string) {
 	}
 	commonSend(body, url, hashkey)
 }
+
+// sendBatchMetrics specifies the URL and prepares the body with a bunch of metrics
 func sendBatchMetrics(m []storage.Metrics, addr string, hashkey string) {
 	url := fmt.Sprintf("http://%s/updates/", addr)
 
@@ -96,6 +136,8 @@ func sendBatchMetrics(m []storage.Metrics, addr string, hashkey string) {
 	}
 	commonSend(body, url, hashkey)
 }
+
+// collectMetrics collects metrics MemStats and RandomValue
 func collectMetrics() []storage.Metrics {
 	metrics := []storage.Metrics{}
 	var memStats runtime.MemStats
@@ -131,11 +173,12 @@ func collectMetrics() []storage.Metrics {
 	return metrics
 }
 
+// collectgopsutilMetrics  collects metrics VirtualMemory
 func collectgopsutilMetrics() []storage.Metrics {
 	metrics := []storage.Metrics{}
 	memoryStats, err := mem.VirtualMemory()
 	if err != nil {
-		//log.Println("Error getting memory stats:", err)
+		log.Logger.Info("Error getting memory stats:", zap.Error(err))
 	} else {
 		total := float64(memoryStats.Total)
 		m := storage.Metrics{
@@ -168,9 +211,7 @@ func workers(jobs <-chan storage.Metrics, addr string, hashkey string) {
 		job, ok := <-jobs
 		if !ok {
 			return
-			//fmt.Println("empty")
 		}
-		fmt.Println("try " + job.ID)
 		sendMetric(job, addr, hashkey)
 	}
 }
@@ -183,11 +224,12 @@ func main() {
 	var err error
 	var rate int
 
+	printBuildInfo()
+
 	flag.IntVar(&pi, "p", 2, "pollInterval")
 	flag.IntVar(&ri, "r", 10, "reportInterval")
 	flag.StringVar(&addr, "a", "localhost:8080", "input addr serv")
 	flag.StringVar(&hash, "k", "", "input hash")
-	//
 	flag.IntVar(&rate, "l", 5, "rate limit")
 	flag.Parse()
 
@@ -224,12 +266,11 @@ func main() {
 
 	var pollCount int64
 	var metrics []storage.Metrics
-	var metrics2 []storage.Metrics
+	var psMetrics []storage.Metrics
 	var mu sync.Mutex
 
 	jobs := make(chan storage.Metrics, rate)
 	defer close(jobs)
-	//results := make(chan storage.Metrics, rate)
 
 	go func() {
 		for {
@@ -241,11 +282,11 @@ func main() {
 		}
 
 	}()
-	//gopsutil
+	// gopsutil
 	go func() {
 		for {
 			mu.Lock()
-			metrics2 = collectgopsutilMetrics()
+			psMetrics = collectgopsutilMetrics()
 			mu.Unlock()
 			time.Sleep(pollInterval)
 		}
@@ -262,17 +303,15 @@ func main() {
 		for index := range metrics {
 			jobs <- metrics[index]
 		}
-		for index := range metrics2 {
-			jobs <- metrics2[index]
+		for index := range psMetrics {
+			jobs <- psMetrics[index]
 		}
 		m := storage.Metrics{
 			ID:    "PollCount",
 			MType: config.Counter,
 			Delta: &pollCount,
 		}
-		fmt.Println("Send poool count ")
 		sendMetric(m, addr, hash)
-		//sendBatchMetrics(metrics, addr, hash)
 		mu.Unlock()
 	}
 }
