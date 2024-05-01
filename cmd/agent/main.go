@@ -4,9 +4,9 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/helpers"
@@ -17,11 +17,9 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
-	"os"
 	"os/exec"
 	"reflect"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +34,7 @@ var (
 	buildDate    string = "N/A"
 	buildCommit  string = "N/A"
 )
+var key *rsa.PublicKey
 
 // printBuildInfo prints the build information.
 func printBuildInfo() {
@@ -78,8 +77,19 @@ func commonSend(body []byte, url string, hashkey string) {
 		return
 	}
 
+	var encryptCompressBody []byte
+	if key != nil {
+		encryptCompressBody, err = helpers.EncryptData(compressBody.(*bytes.Buffer).Bytes(), key)
+		if err != nil {
+			log.Logger.Info("Error closing compressed:", zap.Error(err))
+			return
+		}
+	} else {
+		encryptCompressBody = compressBody.(*bytes.Buffer).Bytes()
+	}
+
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", url, compressBody)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(encryptCompressBody))
 	if err != nil {
 		log.Logger.Info("Error creating request:", zap.Error(err))
 		return
@@ -217,59 +227,78 @@ func workers(jobs <-chan storage.Metrics, addr string, hashkey string) {
 }
 
 func main() {
-	var addr string
-	var pi int
-	var ri int
-	var hash string
-	var err error
-	var rate int
+	//var addr string
+	//var pi int
+	//var ri int
+	//var hash string
+	//var err error
+	//var rate int
+	//var keyPath string
 
 	printBuildInfo()
 
-	flag.IntVar(&pi, "p", 2, "pollInterval")
-	flag.IntVar(&ri, "r", 10, "reportInterval")
-	flag.StringVar(&addr, "a", "localhost:8080", "input addr serv")
-	flag.StringVar(&hash, "k", "", "input hash")
-	flag.IntVar(&rate, "l", 5, "rate limit")
-	flag.Parse()
+	//flag.IntVar(&pi, "p", 2, "pollInterval")
+	//flag.IntVar(&ri, "r", 10, "reportInterval")
+	//flag.StringVar(&addr, "a", "localhost:8080", "input addr serv")
+	//flag.StringVar(&hash, "k", "", "input hash")
+	//flag.IntVar(&rate, "l", 5, "rate limit")
+	//flag.StringVar(&keyPath, "crypto-key", "", "path to the key file")
+	//flag.Parse()
 
-	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
-		addr = envRunAddr
+	//if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
+	//	addr = envRunAddr
+	//}
+	//if envReportInterval := os.Getenv("REPORT_INTERVAL"); envReportInterval != "" {
+	//	ri, err = strconv.Atoi(envReportInterval)
+	//	if err != nil {
+	//		log.Logger.Info("Invalid parameter REPORT_INTERVAL:", zap.Error(err))
+	//		return
+	//	}
+	//}
+	//if envPoolInterval := os.Getenv("POLL_INTERVAL"); envPoolInterval != "" {
+	//	pi, err = strconv.Atoi(envPoolInterval)
+	//	if err != nil {
+	//		log.Logger.Info("Invalid parameter POLL_INTERVAL:", zap.Error(err))
+	//		return
+	//	}
+	//}
+	//if envHashKey := os.Getenv("KEY"); envHashKey != "" {
+	//	hash = envHashKey
+	//}
+	//if envRateLimit := os.Getenv("RATE_LIMIT"); envRateLimit != "" {
+	//	rate, err = strconv.Atoi(envRateLimit)
+	//	if err != nil {
+	//		log.Logger.Info("Invalid parameter RATE_LIMIT:", zap.Error(err))
+	//		return
+	//	}
+	//}
+	//if envKeyPath := os.Getenv("CRYPTO_KEY"); envKeyPath != "" {
+	//	keyPath = envKeyPath
+	//}
+	conf := config.NewConfig()
+	conf.SetConfigFromFlags()
+	conf.SetConfigFromEnv()
+	err := conf.SetConfigFromJSON()
+	if err != nil {
+		log.Logger.Info("Error loading configuration:", zap.Error(err))
+		return
 	}
-	if envReportInterval := os.Getenv("REPORT_INTERVAL"); envReportInterval != "" {
-		ri, err = strconv.Atoi(envReportInterval)
+	if conf.KeyPath != "" {
+		key, err = helpers.ConvertPublicKey(conf.KeyPath)
 		if err != nil {
-			log.Logger.Info("Invalid parameter REPORT_INTERVAL:", zap.Error(err))
+			log.Logger.Info("Error reading public key:", zap.Error(err))
 			return
 		}
 	}
-	if envPoolInterval := os.Getenv("POLL_INTERVAL"); envPoolInterval != "" {
-		pi, err = strconv.Atoi(envPoolInterval)
-		if err != nil {
-			log.Logger.Info("Invalid parameter POLL_INTERVAL:", zap.Error(err))
-			return
-		}
-	}
-	if envHashKey := os.Getenv("KEY"); envHashKey != "" {
-		hash = envHashKey
-	}
-	if envRateLimit := os.Getenv("RATE_LIMIT"); envRateLimit != "" {
-		rate, err = strconv.Atoi(envRateLimit)
-		if err != nil {
-			log.Logger.Info("Invalid parameter RATE_LIMIT:", zap.Error(err))
-			return
-		}
-	}
-
-	pollInterval := time.Duration(pi) * time.Second
-	reportInterval := time.Duration(ri) * time.Second
+	pollInterval := time.Duration(conf.PollInterval) * time.Second
+	reportInterval := time.Duration(conf.ReportInterval) * time.Second
 
 	var pollCount int64
 	var metrics []storage.Metrics
 	var psMetrics []storage.Metrics
 	var mu sync.Mutex
 
-	jobs := make(chan storage.Metrics, rate)
+	jobs := make(chan storage.Metrics, conf.RateLimit)
 	defer close(jobs)
 
 	go func() {
@@ -293,8 +322,9 @@ func main() {
 
 	}()
 
-	for w := 1; w <= rate; w++ {
-		go workers(jobs, addr, hash)
+	for w := 1; w <= conf.RateLimit; w++ {
+		//go workers(jobs, addr, hash)
+		go workers(jobs, conf.Addr, conf.Hash)
 	}
 
 	for {
@@ -311,7 +341,8 @@ func main() {
 			MType: config.Counter,
 			Delta: &pollCount,
 		}
-		sendMetric(m, addr, hash)
+		//sendMetric(m, addr, hash)
+		sendMetric(m, conf.Addr, conf.Hash)
 		mu.Unlock()
 	}
 }

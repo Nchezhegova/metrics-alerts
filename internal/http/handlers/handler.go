@@ -3,11 +3,13 @@ package handlers
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/rsa"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/helpers"
+	"github.com/Nchezhegova/metrics-alerts/internal/http/middleware"
 	"github.com/Nchezhegova/metrics-alerts/internal/log"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
 	"github.com/gin-gonic/gin"
@@ -343,7 +345,7 @@ func checkHash(c *gin.Context, hashKey string) bool {
 }
 
 // StartServ starts the server and routes requests
-func StartServ(m storage.MStorage, addr string, storeInterval int, filePath string, restore bool, hashKey string) {
+func StartServ(m storage.MStorage, addr string, storeInterval int, filePath string, restore bool, hashKey string, keyPath string) {
 	r := gin.Default()
 	r.ContextWithFallback = true
 
@@ -351,15 +353,18 @@ func StartServ(m storage.MStorage, addr string, storeInterval int, filePath stri
 
 	syncWrite := helpers.SetWriterFile(m, storeInterval, filePath, restore)
 
+	var key *rsa.PrivateKey
+	var err error
+	if keyPath != "" {
+		key, err = helpers.ConvertPrivateKey(keyPath)
+		if err != nil {
+			log.Logger.Info("Error convert to private key:", zap.Error(err))
+			return
+		}
+	}
+
 	r.POST("/update/:type/:name/:value", func(c *gin.Context) {
 		updateMetrics(c, m, syncWrite, filePath)
-	})
-	r.POST("/update/", func(c *gin.Context) {
-		if checkHash(c, hashKey) {
-			updateMetricsFromBody(c, m, syncWrite, filePath, hashKey)
-		} else {
-			log.Logger.Info("Problem with hashkey")
-		}
 	})
 	r.GET("/value/:type/:name/", func(c *gin.Context) {
 		getMetric(c, m)
@@ -377,15 +382,26 @@ func StartServ(m storage.MStorage, addr string, storeInterval int, filePath stri
 	r.GET("/ping", func(c *gin.Context) {
 		checkDB(c, storage.DB)
 	})
-	r.POST("/updates/", func(c *gin.Context) {
-		if checkHash(c, hashKey) {
-			updateBatchMetricsFromBody(c, m, syncWrite, filePath, hashKey)
-		} else {
-			log.Logger.Info("Problem with hashkey")
-		}
-	})
 
-	err := r.Run(addr)
+	r.Use(middleware.DecryptBody(key))
+	{
+		r.POST("/updates/", func(c *gin.Context) {
+			if checkHash(c, hashKey) {
+				updateBatchMetricsFromBody(c, m, syncWrite, filePath, hashKey)
+			} else {
+				log.Logger.Info("Problem with hashkey")
+			}
+		})
+		r.POST("/update/", func(c *gin.Context) {
+			if checkHash(c, hashKey) {
+				updateMetricsFromBody(c, m, syncWrite, filePath, hashKey)
+			} else {
+				log.Logger.Info("Problem with hashkey")
+			}
+		})
+	}
+
+	err = r.Run(addr)
 	if err != nil {
 		panic(err)
 	}
