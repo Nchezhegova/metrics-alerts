@@ -142,7 +142,7 @@ func (c *Config) SetConfigFromJSON() error {
 	if c.FilePath == "" {
 		c.FilePath = config.FilePath
 	}
-	if c.Restore == true {
+	if c.Restore {
 		c.Restore = config.Restore
 	}
 	if c.KeyPath == "" {
