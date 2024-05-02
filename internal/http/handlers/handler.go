@@ -3,10 +3,12 @@ package handlers
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/rsa"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/helpers"
 	"github.com/Nchezhegova/metrics-alerts/internal/http/middleware"
@@ -16,9 +18,13 @@ import (
 	"go.uber.org/zap"
 	"io"
 	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 )
 
 var mu sync.Mutex
@@ -401,8 +407,29 @@ func StartServ(m storage.MStorage, addr string, storeInterval int, filePath stri
 		})
 	}
 
-	err = r.Run(addr)
-	if err != nil {
-		panic(err)
+	//err = r.Run(addr)
+	//if err != nil {
+	//	panic(err)
+	//}
+	server := &http.Server{
+		Addr:    addr,
+		Handler: r,
+	}
+	sigint := make(chan os.Signal, 1)
+	signal.Notify(sigint, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+
+	go func() {
+		<-sigint
+		log.Logger.Info("Shutting down the server...")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err = server.Shutdown(ctx); err != nil {
+			log.Logger.Error("Error shutting down the server:", zap.Error(err))
+		}
+	}()
+	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Logger.Error("Error starting the server:", zap.Error(err))
 	}
 }

@@ -17,11 +17,14 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"os"
 	"os/exec"
+	"os/signal"
 	"reflect"
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -227,54 +230,10 @@ func workers(jobs <-chan storage.Metrics, addr string, hashkey string) {
 }
 
 func main() {
-	//var addr string
-	//var pi int
-	//var ri int
-	//var hash string
-	//var err error
-	//var rate int
-	//var keyPath string
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 
 	printBuildInfo()
-
-	//flag.IntVar(&pi, "p", 2, "pollInterval")
-	//flag.IntVar(&ri, "r", 10, "reportInterval")
-	//flag.StringVar(&addr, "a", "localhost:8080", "input addr serv")
-	//flag.StringVar(&hash, "k", "", "input hash")
-	//flag.IntVar(&rate, "l", 5, "rate limit")
-	//flag.StringVar(&keyPath, "crypto-key", "", "path to the key file")
-	//flag.Parse()
-
-	//if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
-	//	addr = envRunAddr
-	//}
-	//if envReportInterval := os.Getenv("REPORT_INTERVAL"); envReportInterval != "" {
-	//	ri, err = strconv.Atoi(envReportInterval)
-	//	if err != nil {
-	//		log.Logger.Info("Invalid parameter REPORT_INTERVAL:", zap.Error(err))
-	//		return
-	//	}
-	//}
-	//if envPoolInterval := os.Getenv("POLL_INTERVAL"); envPoolInterval != "" {
-	//	pi, err = strconv.Atoi(envPoolInterval)
-	//	if err != nil {
-	//		log.Logger.Info("Invalid parameter POLL_INTERVAL:", zap.Error(err))
-	//		return
-	//	}
-	//}
-	//if envHashKey := os.Getenv("KEY"); envHashKey != "" {
-	//	hash = envHashKey
-	//}
-	//if envRateLimit := os.Getenv("RATE_LIMIT"); envRateLimit != "" {
-	//	rate, err = strconv.Atoi(envRateLimit)
-	//	if err != nil {
-	//		log.Logger.Info("Invalid parameter RATE_LIMIT:", zap.Error(err))
-	//		return
-	//	}
-	//}
-	//if envKeyPath := os.Getenv("CRYPTO_KEY"); envKeyPath != "" {
-	//	keyPath = envKeyPath
-	//}
 	conf := config.NewConfig()
 	conf.SetConfigFromFlags()
 	conf.SetConfigFromEnv()
@@ -283,6 +242,7 @@ func main() {
 		log.Logger.Info("Error loading configuration:", zap.Error(err))
 		return
 	}
+
 	if conf.KeyPath != "" {
 		key, err = helpers.ConvertPublicKey(conf.KeyPath)
 		if err != nil {
@@ -323,7 +283,6 @@ func main() {
 	}()
 
 	for w := 1; w <= conf.RateLimit; w++ {
-		//go workers(jobs, addr, hash)
 		go workers(jobs, conf.Addr, conf.Hash)
 	}
 
@@ -341,8 +300,13 @@ func main() {
 			MType: config.Counter,
 			Delta: &pollCount,
 		}
-		//sendMetric(m, addr, hash)
 		sendMetric(m, conf.Addr, conf.Hash)
 		mu.Unlock()
+		select {
+		case <-sigs:
+			log.Logger.Info("Shutting down agent")
+			os.Exit(0)
+		default:
+		}
 	}
 }

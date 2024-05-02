@@ -55,7 +55,7 @@ func (c *Config) SetConfigFromFlags() {
 	flag.StringVar(&c.Hash, "k", c.Hash, "Hash for password")
 	flag.StringVar(&c.ConfigFile, "c", c.ConfigFile, "Path to config file")
 	flag.IntVar(&c.PollInterval, "p", c.PollInterval, "Poll interval")
-	//в задании флаг -r, но тогда пересекалось бы с restore
+	//в задании у ReportInterval флаг -r, но тогда пересекалось бы с restore
 	flag.IntVar(&c.ReportInterval, "ri", c.ReportInterval, "Report interval")
 	flag.IntVar(&c.RateLimit, "l", c.RateLimit, "Rate limit")
 	flag.Parse()
@@ -92,7 +92,7 @@ func (c *Config) SetConfigFromEnv() {
 	if hash := os.Getenv("HASH"); hash != "" {
 		c.Hash = hash
 	}
-	if configFile := os.Getenv("CONFIG_FILE"); configFile != "" {
+	if configFile := os.Getenv("CONFIG"); configFile != "" {
 		c.ConfigFile = configFile
 	}
 	if pollInterval := os.Getenv("POLL_INTERVAL"); pollInterval != "" {
