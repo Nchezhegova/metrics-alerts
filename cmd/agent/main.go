@@ -219,19 +219,21 @@ func collectgopsutilMetrics() []storage.Metrics {
 	return metrics
 }
 
-func workers(jobs <-chan storage.Metrics, addr string, hashkey string) {
+func workers(jobs <-chan storage.Metrics, addr string, hashkey string, wg *sync.WaitGroup) {
 	for {
 		job, ok := <-jobs
 		if !ok {
 			return
 		}
 		sendMetric(job, addr, hashkey)
+		wg.Done()
 	}
 }
 
 func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	wgs := sync.WaitGroup{}
 
 	printBuildInfo()
 	conf := config.NewConfig()
@@ -283,16 +285,18 @@ func main() {
 	}()
 
 	for w := 1; w <= conf.RateLimit; w++ {
-		go workers(jobs, conf.Addr, conf.Hash)
+		go workers(jobs, conf.Addr, conf.Hash, &wgs)
 	}
 
 	for {
 		time.Sleep(reportInterval)
 		mu.Lock()
 		for index := range metrics {
+			wgs.Add(1)
 			jobs <- metrics[index]
 		}
 		for index := range psMetrics {
+			wgs.Add(1)
 			jobs <- psMetrics[index]
 		}
 		m := storage.Metrics{
@@ -302,9 +306,11 @@ func main() {
 		}
 		sendMetric(m, conf.Addr, conf.Hash)
 		mu.Unlock()
+
 		select {
 		case <-sigs:
 			log.Logger.Info("Shutting down agent")
+			wgs.Wait()
 			os.Exit(0)
 		default:
 		}

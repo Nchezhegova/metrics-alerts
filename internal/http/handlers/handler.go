@@ -365,7 +365,7 @@ func StartServ(m storage.MStorage, addr string, storeInterval int, filePath stri
 		key, err = helpers.ConvertPrivateKey(keyPath)
 		if err != nil {
 			log.Logger.Info("Error convert to private key:", zap.Error(err))
-			return
+			os.Exit(1)
 		}
 	}
 
@@ -407,10 +407,6 @@ func StartServ(m storage.MStorage, addr string, storeInterval int, filePath stri
 		})
 	}
 
-	//err = r.Run(addr)
-	//if err != nil {
-	//	panic(err)
-	//}
 	server := &http.Server{
 		Addr:    addr,
 		Handler: r,

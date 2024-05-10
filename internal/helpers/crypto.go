@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"github.com/Nchezhegova/metrics-alerts/internal/log"
 	"go.uber.org/zap"
 	"os"
@@ -14,22 +15,22 @@ func ConvertPublicKey(key string) (*rsa.PublicKey, error) {
 	keyFile, err := os.ReadFile(key)
 	if err != nil {
 		log.Logger.Error("Error reading key file", zap.Error(err))
-		os.Exit(1)
+		return nil, err
 	}
 	block, _ := pem.Decode(keyFile)
 	if block == nil || block.Type != "PUBLIC KEY" {
 		log.Logger.Error("Invalid public key", zap.String("type", block.Type))
-		os.Exit(1)
+		return nil, fmt.Errorf("invalid public key")
 	}
 	publicKey, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
 		log.Logger.Error("Error parsing public key", zap.Error(err))
-		os.Exit(1)
+		return nil, err
 	}
 	rsaPublicKey, ok := publicKey.(*rsa.PublicKey)
 	if !ok {
 		log.Logger.Error("Error converting to RSA public key")
-		os.Exit(1)
+		return nil, err
 	}
 	return rsaPublicKey, nil
 }
@@ -38,19 +39,19 @@ func ConvertPrivateKey(key string) (*rsa.PrivateKey, error) {
 	keyFile, err := os.ReadFile(key)
 	if err != nil {
 		log.Logger.Error("Error reading key file", zap.Error(err))
-		os.Exit(1)
+		return nil, err
 	}
 
 	block, _ := pem.Decode(keyFile)
 	if block == nil || block.Type != "PRIVATE KEY" {
 		log.Logger.Error("Invalid private key", zap.String("type", block.Type))
-		os.Exit(1)
+		return nil, fmt.Errorf("invalid private key")
 	}
 
 	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 	if err != nil {
 		log.Logger.Error("Error parsing private key", zap.Error(err))
-		os.Exit(1)
+		return nil, err
 	}
 
 	return privateKey, nil

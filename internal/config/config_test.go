@@ -73,7 +73,7 @@ func TestSetConfigFromEnv(t *testing.T) {
 	if conf.FilePath != "/test/path" {
 		t.Errorf("expected FilePath=/test/path, got %s", conf.FilePath)
 	}
-	if conf.Restore != false {
+	if conf.Restore {
 		t.Errorf("expected Restore=false, got %t", conf.Restore)
 	}
 	if conf.KeyPath != "/test/key" {
@@ -153,12 +153,12 @@ func TestSetConfigFromJSON(t *testing.T) {
 		t.Errorf("expected Hash=test_hash, got %s", conf.Hash)
 	}
 	if conf.PollInterval != 2 {
-		t.Errorf("expected PollInterval=3, got %d", conf.PollInterval)
+		t.Errorf("expected PollInterval=2, got %d", conf.PollInterval)
 	}
 	if conf.ReportInterval != 10 {
-		t.Errorf("expected ReportInterval=15, got %d", conf.ReportInterval)
+		t.Errorf("expected ReportInterval=10, got %d", conf.ReportInterval)
 	}
 	if conf.RateLimit != 5 {
-		t.Errorf("expected RateLimit=10, got %d", conf.RateLimit)
+		t.Errorf("expected RateLimit=5, got %d", conf.RateLimit)
 	}
 }
