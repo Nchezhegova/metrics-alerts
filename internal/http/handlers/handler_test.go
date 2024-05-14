@@ -202,7 +202,7 @@ func TestStartServ(t *testing.T) {
 		Counter: map[string]int64{"q": 54},
 	}
 
-	go StartServ(&m, "localhost:8099", 1, "", false, "")
+	go StartServ(&m, "localhost:8099", 1, "", false, "", "")
 
 	time.Sleep(1000 * time.Millisecond)
 

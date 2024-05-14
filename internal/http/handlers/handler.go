@@ -3,20 +3,28 @@ package handlers
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
+	"crypto/rsa"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/helpers"
+	"github.com/Nchezhegova/metrics-alerts/internal/http/middleware"
 	"github.com/Nchezhegova/metrics-alerts/internal/log"
 	"github.com/Nchezhegova/metrics-alerts/internal/storage"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"io"
 	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 )
 
 var mu sync.Mutex
@@ -343,7 +351,7 @@ func checkHash(c *gin.Context, hashKey string) bool {
 }
 
 // StartServ starts the server and routes requests
-func StartServ(m storage.MStorage, addr string, storeInterval int, filePath string, restore bool, hashKey string) {
+func StartServ(m storage.MStorage, addr string, storeInterval int, filePath string, restore bool, hashKey string, keyPath string) {
 	r := gin.Default()
 	r.ContextWithFallback = true
 
@@ -351,15 +359,18 @@ func StartServ(m storage.MStorage, addr string, storeInterval int, filePath stri
 
 	syncWrite := helpers.SetWriterFile(m, storeInterval, filePath, restore)
 
+	var key *rsa.PrivateKey
+	var err error
+	if keyPath != "" {
+		key, err = helpers.ConvertPrivateKey(keyPath)
+		if err != nil {
+			log.Logger.Info("Error convert to private key:", zap.Error(err))
+			os.Exit(1)
+		}
+	}
+
 	r.POST("/update/:type/:name/:value", func(c *gin.Context) {
 		updateMetrics(c, m, syncWrite, filePath)
-	})
-	r.POST("/update/", func(c *gin.Context) {
-		if checkHash(c, hashKey) {
-			updateMetricsFromBody(c, m, syncWrite, filePath, hashKey)
-		} else {
-			log.Logger.Info("Problem with hashkey")
-		}
 	})
 	r.GET("/value/:type/:name/", func(c *gin.Context) {
 		getMetric(c, m)
@@ -377,16 +388,44 @@ func StartServ(m storage.MStorage, addr string, storeInterval int, filePath stri
 	r.GET("/ping", func(c *gin.Context) {
 		checkDB(c, storage.DB)
 	})
-	r.POST("/updates/", func(c *gin.Context) {
-		if checkHash(c, hashKey) {
-			updateBatchMetricsFromBody(c, m, syncWrite, filePath, hashKey)
-		} else {
-			log.Logger.Info("Problem with hashkey")
-		}
-	})
 
-	err := r.Run(addr)
-	if err != nil {
-		panic(err)
+	r.Use(middleware.DecryptBody(key))
+	{
+		r.POST("/updates/", func(c *gin.Context) {
+			if checkHash(c, hashKey) {
+				updateBatchMetricsFromBody(c, m, syncWrite, filePath, hashKey)
+			} else {
+				log.Logger.Info("Problem with hashkey")
+			}
+		})
+		r.POST("/update/", func(c *gin.Context) {
+			if checkHash(c, hashKey) {
+				updateMetricsFromBody(c, m, syncWrite, filePath, hashKey)
+			} else {
+				log.Logger.Info("Problem with hashkey")
+			}
+		})
+	}
+
+	server := &http.Server{
+		Addr:    addr,
+		Handler: r,
+	}
+	sigint := make(chan os.Signal, 1)
+	signal.Notify(sigint, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+
+	go func() {
+		<-sigint
+		log.Logger.Info("Shutting down the server...")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err = server.Shutdown(ctx); err != nil {
+			log.Logger.Error("Error shutting down the server:", zap.Error(err))
+		}
+	}()
+	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Logger.Error("Error starting the server:", zap.Error(err))
 	}
 }
