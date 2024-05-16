@@ -8,6 +8,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/Nchezhegova/metrics-alerts/cmd/grpc_protocol"
+	"github.com/Nchezhegova/metrics-alerts/cmd/grpc_protocol/proto"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/helpers"
 	"github.com/Nchezhegova/metrics-alerts/internal/log"
@@ -64,7 +66,7 @@ func printBuildInfo() {
 }
 
 // commonSend sends data with metrics independent of the body
-func commonSend(body []byte, url string, hashkey string) {
+func commonSend(body []byte, url string, hashkey string, dsc *proto.DataServiceClient) {
 	var compressBody io.ReadWriter = &bytes.Buffer{}
 	var err error
 
@@ -91,43 +93,47 @@ func commonSend(body []byte, url string, hashkey string) {
 		encryptCompressBody = compressBody.(*bytes.Buffer).Bytes()
 	}
 
-	client := &http.Client{}
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(encryptCompressBody))
-	if err != nil {
-		log.Logger.Info("Error creating request:", zap.Error(err))
-		return
-	}
-	req.Header.Set("Content-Encoding", "gzip")
-	req.Header.Set("Content-Type", "application/json")
-
-	if hashkey != "" {
-		compressedData := compressBody.(*bytes.Buffer).Bytes()
-		req.Header.Set("HashSHA256", base64.StdEncoding.EncodeToString(helpers.CalculateHash(compressedData, hashkey)))
-	}
-
-	var resp *http.Response
-	for i := 0; i < config.MaxRetries; i++ {
-		resp, err = client.Do(req)
-		if err == nil {
-			err = resp.Body.Close()
-			if err != nil {
-				log.Logger.Info("Error closing body:", zap.Error(err))
-				return
-			}
-			break
-		} else {
-			time.Sleep(RetryDelays[i])
-			continue
+	if dsc != nil {
+		grpc_protocol.TestSend(*dsc, encryptCompressBody)
+	} else {
+		client := &http.Client{}
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(encryptCompressBody))
+		if err != nil {
+			log.Logger.Info("Error creating request:", zap.Error(err))
+			return
 		}
-	}
-	if err != nil {
-		log.Logger.Info("Max retries", zap.Error(err))
-		return
+		req.Header.Set("Content-Encoding", "gzip")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Real-IP", config.IP)
+
+		if hashkey != "" {
+			compressedData := compressBody.(*bytes.Buffer).Bytes()
+			req.Header.Set("HashSHA256", base64.StdEncoding.EncodeToString(helpers.CalculateHash(compressedData, hashkey)))
+		}
+		var resp *http.Response
+		for i := 0; i < config.MaxRetries; i++ {
+			resp, err = client.Do(req)
+			if err == nil {
+				err = resp.Body.Close()
+				if err != nil {
+					log.Logger.Info("Error closing body:", zap.Error(err))
+					return
+				}
+				break
+			} else {
+				time.Sleep(RetryDelays[i])
+				continue
+			}
+		}
+		if err != nil {
+			log.Logger.Info("Max retries", zap.Error(err))
+			return
+		}
 	}
 }
 
 // sendMetric specifies the url and prepares the body with the one metric
-func sendMetric(m storage.Metrics, addr string, hashkey string) {
+func sendMetric(m storage.Metrics, addr string, hashkey string, dsc *proto.DataServiceClient) {
 	url := fmt.Sprintf("http://%s/update/", addr)
 
 	body, err := json.Marshal(m)
@@ -135,7 +141,7 @@ func sendMetric(m storage.Metrics, addr string, hashkey string) {
 		log.Logger.Info("Error convert to JSON:", zap.Error(err))
 		return
 	}
-	commonSend(body, url, hashkey)
+	commonSend(body, url, hashkey, dsc)
 }
 
 // sendBatchMetrics specifies the URL and prepares the body with a bunch of metrics
@@ -147,7 +153,7 @@ func sendBatchMetrics(m []storage.Metrics, addr string, hashkey string) {
 		log.Logger.Info("Error convert to JSON:", zap.Error(err))
 		return
 	}
-	commonSend(body, url, hashkey)
+	commonSend(body, url, hashkey, nil)
 }
 
 // collectMetrics collects metrics MemStats and RandomValue
@@ -219,13 +225,13 @@ func collectgopsutilMetrics() []storage.Metrics {
 	return metrics
 }
 
-func workers(jobs <-chan storage.Metrics, addr string, hashkey string, wg *sync.WaitGroup) {
+func workers(jobs <-chan storage.Metrics, addr string, hashkey string, wg *sync.WaitGroup, dsc *proto.DataServiceClient) {
 	for {
 		job, ok := <-jobs
 		if !ok {
 			return
 		}
-		sendMetric(job, addr, hashkey)
+		sendMetric(job, addr, hashkey, dsc)
 		wg.Done()
 	}
 }
@@ -260,6 +266,8 @@ func main() {
 	var psMetrics []storage.Metrics
 	var mu sync.Mutex
 
+	dsc := grpc_protocol.StartGRPCClient()
+
 	jobs := make(chan storage.Metrics, conf.RateLimit)
 	defer close(jobs)
 
@@ -285,7 +293,7 @@ func main() {
 	}()
 
 	for w := 1; w <= conf.RateLimit; w++ {
-		go workers(jobs, conf.Addr, conf.Hash, &wgs)
+		go workers(jobs, conf.Addr, conf.Hash, &wgs, dsc)
 	}
 
 	for {
@@ -304,7 +312,7 @@ func main() {
 			MType: config.Counter,
 			Delta: &pollCount,
 		}
-		sendMetric(m, conf.Addr, conf.Hash)
+		sendMetric(m, conf.Addr, conf.Hash, dsc)
 		mu.Unlock()
 
 		select {

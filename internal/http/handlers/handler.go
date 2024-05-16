@@ -351,11 +351,12 @@ func checkHash(c *gin.Context, hashKey string) bool {
 }
 
 // StartServ starts the server and routes requests
-func StartServ(m storage.MStorage, addr string, storeInterval int, filePath string, restore bool, hashKey string, keyPath string) {
+func StartServ(m storage.MStorage, addr string, storeInterval int, filePath string, restore bool,
+	hashKey string, keyPath string, trustedSubnet string) {
 	r := gin.Default()
 	r.ContextWithFallback = true
 
-	r.Use(log.GinLogger(log.Logger), gin.Recovery())
+	r.Use(log.GinLogger(log.Logger), middleware.CheckIP(trustedSubnet), gin.Recovery())
 
 	syncWrite := helpers.SetWriterFile(m, storeInterval, filePath, restore)
 

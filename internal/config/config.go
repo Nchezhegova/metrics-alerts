@@ -13,6 +13,8 @@ const Gauge = "gauge"
 const DATEBASE = "postgres://user:password@localhost/metrics"
 const MaxRetries = 3
 
+const IP = "127.0.0.1"
+
 type Config struct {
 	Addr          string `json:"address"`
 	StoreInterval int    `json:"store_interval"`
@@ -22,6 +24,7 @@ type Config struct {
 	AddrDB        string `json:"database_dsn"`
 	Hash          string `json:"hash"`
 	ConfigFile    string `json:"config_file"`
+	TrustedSubnet string `json:"trusted_subnet"`
 	//agent's config
 	PollInterval   int `json:"poll_interval"`
 	ReportInterval int `json:"report_interval"`
@@ -42,6 +45,7 @@ func NewConfig() *Config {
 		PollInterval:   2,
 		ReportInterval: 10,
 		RateLimit:      5,
+		TrustedSubnet:  "127.0.0.1/32",
 	}
 }
 
@@ -59,6 +63,7 @@ func (c *Config) SetConfigFromFlags() {
 	//в задании у ReportInterval флаг -r, но тогда пересекалось бы с restore
 	flag.IntVar(&c.ReportInterval, "ri", c.ReportInterval, "Report interval")
 	flag.IntVar(&c.RateLimit, "l", c.RateLimit, "Rate limit")
+	flag.StringVar(&c.TrustedSubnet, "t", c.TrustedSubnet, "Trusted subnet")
 	flag.Parse()
 }
 
@@ -118,6 +123,9 @@ func (c *Config) SetConfigFromEnv() {
 		}
 		c.RateLimit = rateLimitInt
 	}
+	if trustedSubnet := os.Getenv("TRUSTED_SUBNET"); trustedSubnet != "" {
+		c.TrustedSubnet = trustedSubnet
+	}
 }
 
 // SetConfigFromJSON sets the Config fields from the JSON file
@@ -163,6 +171,9 @@ func (c *Config) SetConfigFromJSON() error {
 	}
 	if c.RateLimit == 0 {
 		c.RateLimit = config.RateLimit
+	}
+	if c.TrustedSubnet == "" {
+		c.TrustedSubnet = config.TrustedSubnet
 	}
 	return nil
 }

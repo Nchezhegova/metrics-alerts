@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package metrics_alerts;
+
+option go_package = "metrics-alerts/cmd/grpc_protocol/proto";
+
+service DataService {
+  rpc SendData(DataRequest) returns (DataResponse) {}
+}
+
+message DataRequest {
+  bytes message = 1;
+  map<string, string> headers = 2;
+}
+
+message DataResponse {
+  string reply = 1;
+}
