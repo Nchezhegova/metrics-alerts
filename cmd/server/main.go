@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/Nchezhegova/metrics-alerts/cmd/grpc_protocol"
+	"github.com/Nchezhegova/metrics-alerts/cmd/grpcProtocol"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/http/handlers"
 	"github.com/Nchezhegova/metrics-alerts/internal/log"
@@ -58,13 +58,13 @@ func main() {
 		DBMemory := storage.DBStorage{}
 		storage.OpenDB(conf.AddrDB)
 		handlers.StartServ(&DBMemory, conf.Addr, conf.StoreInterval, conf.FilePath, conf.Restore, conf.Hash, conf.KeyPath, conf.TrustedSubnet)
-		grpc_protocol.StartGRPCServer(&DBMemory, conf.TrustedSubnet)
+		grpcProtocol.StartGRPCServer(&DBMemory, conf.TrustedSubnet)
 		defer storage.DB.Close()
 	} else {
 		globalMemory := storage.MemStorage{}
 		globalMemory.Counter = make(map[string]int64)
 		globalMemory.Gauge = make(map[string]float64)
-		grpc_protocol.StartGRPCServer(&globalMemory, conf.TrustedSubnet)
+		grpcProtocol.StartGRPCServer(&globalMemory, conf.TrustedSubnet)
 		handlers.StartServ(&globalMemory, conf.Addr, conf.StoreInterval, conf.FilePath, conf.Restore, conf.Hash, conf.KeyPath, conf.TrustedSubnet)
 	}
 	defer log.Logger.Sync()

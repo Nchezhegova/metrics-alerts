@@ -28,7 +28,6 @@ func CheckIP(trustedSubnet string) gin.HandlerFunc {
 			return
 		}
 		c.Next()
-		return
 	}
 
 }

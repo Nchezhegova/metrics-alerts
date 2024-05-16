@@ -1,4 +1,4 @@
-package grpc_protocol
+package grpcProtocol
 
 import (
 	"context"
@@ -8,11 +8,11 @@ import (
 	"google.golang.org/grpc/metadata"
 	"log"
 
-	pb "github.com/Nchezhegova/metrics-alerts/cmd/grpc_protocol/proto"
+	pb "github.com/Nchezhegova/metrics-alerts/cmd/grpcProtocol/proto"
 )
 
 func StartGRPCClient() *pb.DataServiceClient {
-	conn, err := grpc.Dial(":3200", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(":3200", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatal(err)
 	}
