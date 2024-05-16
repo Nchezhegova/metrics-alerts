@@ -8,8 +8,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/Nchezhegova/metrics-alerts/cmd/grpcProtocol"
-	"github.com/Nchezhegova/metrics-alerts/cmd/grpcProtocol/proto"
+	"github.com/Nchezhegova/metrics-alerts/cmd/grpcprotocol"
+	"github.com/Nchezhegova/metrics-alerts/cmd/grpcprotocol/proto"
 	"github.com/Nchezhegova/metrics-alerts/internal/config"
 	"github.com/Nchezhegova/metrics-alerts/internal/helpers"
 	"github.com/Nchezhegova/metrics-alerts/internal/log"
@@ -94,7 +94,7 @@ func commonSend(body []byte, url string, hashkey string, dsc *proto.DataServiceC
 	}
 
 	if dsc != nil {
-		grpcProtocol.TestSend(*dsc, encryptCompressBody)
+		grpcprotocol.TestSend(*dsc, encryptCompressBody)
 	} else {
 		client := &http.Client{}
 		req, err := http.NewRequest("POST", url, bytes.NewBuffer(encryptCompressBody))
@@ -266,7 +266,7 @@ func main() {
 	var psMetrics []storage.Metrics
 	var mu sync.Mutex
 
-	dsc := grpcProtocol.StartGRPCClient()
+	dsc := grpcprotocol.StartGRPCClient()
 
 	jobs := make(chan storage.Metrics, conf.RateLimit)
 	defer close(jobs)

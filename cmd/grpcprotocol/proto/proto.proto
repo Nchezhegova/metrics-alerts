@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package metrics_alerts;
 
-option go_package = "metrics-alerts/cmd/grpcProtocol/proto";
+option go_package = "metrics-alerts/cmd/grpcprotocol/proto";
 
 service DataService {
   rpc SendData(DataRequest) returns (DataResponse) {}

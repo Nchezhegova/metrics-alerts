@@ -1,4 +1,4 @@
-package grpcProtocol
+package grpcprotocol
 
 import (
 	"bytes"
@@ -18,7 +18,7 @@ import (
 	"strings"
 	"sync"
 
-	pb "github.com/Nchezhegova/metrics-alerts/cmd/grpcProtocol/proto"
+	pb "github.com/Nchezhegova/metrics-alerts/cmd/grpcprotocol/proto"
 )
 
 var mu sync.Mutex

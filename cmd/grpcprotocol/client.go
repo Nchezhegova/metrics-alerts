@@ -1,4 +1,4 @@
-package grpcProtocol
+package grpcprotocol
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"log"
 
-	pb "github.com/Nchezhegova/metrics-alerts/cmd/grpcProtocol/proto"
+	pb "github.com/Nchezhegova/metrics-alerts/cmd/grpcprotocol/proto"
 )
 
 func StartGRPCClient() *pb.DataServiceClient {
