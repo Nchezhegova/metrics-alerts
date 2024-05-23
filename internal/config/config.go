@@ -29,6 +29,8 @@ type Config struct {
 	PollInterval   int `json:"poll_interval"`
 	ReportInterval int `json:"report_interval"`
 	RateLimit      int `json:"rate_limit"`
+	//grpc's config
+	GrpcAddr string `json:"grpc_address"`
 }
 
 // NewConfig returns a new Config with default values
@@ -46,6 +48,7 @@ func NewConfig() *Config {
 		ReportInterval: 10,
 		RateLimit:      5,
 		TrustedSubnet:  "127.0.0.1/32",
+		GrpcAddr:       ":3200",
 	}
 }
 

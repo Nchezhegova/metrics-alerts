@@ -40,6 +40,7 @@ var (
 	buildCommit  string = "N/A"
 )
 var key *rsa.PublicKey
+var Client = &http.Client{}
 
 // printBuildInfo prints the build information.
 func printBuildInfo() {
@@ -96,7 +97,6 @@ func commonSend(body []byte, url string, hashkey string, dsc *proto.DataServiceC
 	if dsc != nil {
 		grpcprotocol.TestSend(*dsc, encryptCompressBody)
 	} else {
-		client := &http.Client{}
 		req, err := http.NewRequest("POST", url, bytes.NewBuffer(encryptCompressBody))
 		if err != nil {
 			log.Logger.Info("Error creating request:", zap.Error(err))
@@ -112,7 +112,7 @@ func commonSend(body []byte, url string, hashkey string, dsc *proto.DataServiceC
 		}
 		var resp *http.Response
 		for i := 0; i < config.MaxRetries; i++ {
-			resp, err = client.Do(req)
+			resp, err = Client.Do(req)
 			if err == nil {
 				err = resp.Body.Close()
 				if err != nil {
@@ -266,7 +266,7 @@ func main() {
 	var psMetrics []storage.Metrics
 	var mu sync.Mutex
 
-	dsc := grpcprotocol.StartGRPCClient()
+	dsc := grpcprotocol.StartGRPCClient(conf.GrpcAddr)
 
 	jobs := make(chan storage.Metrics, conf.RateLimit)
 	defer close(jobs)

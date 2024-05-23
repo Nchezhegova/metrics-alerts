@@ -8,10 +8,6 @@ import (
 
 func CheckIP(trustedSubnet string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if trustedSubnet == "" {
-			c.Next()
-			return
-		}
 		ipStr := c.GetHeader("X-Real-IP")
 		if ipStr == "" {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "X-Real-IP header is required"})

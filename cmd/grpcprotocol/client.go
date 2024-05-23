@@ -11,8 +11,8 @@ import (
 	pb "github.com/Nchezhegova/metrics-alerts/cmd/grpcprotocol/proto"
 )
 
-func StartGRPCClient() *pb.DataServiceClient {
-	conn, err := grpc.NewClient(":3200", grpc.WithTransportCredentials(insecure.NewCredentials()))
+func StartGRPCClient(addr string) *pb.DataServiceClient {
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatal(err)
 	}
