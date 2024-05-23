@@ -34,7 +34,7 @@ func TestSendMetric(t *testing.T) {
 		ID:    "RandomValue",
 		MType: "gauge",
 		Value: &randomValue,
-	}, server.Listener.Addr().String(), "")
+	}, server.Listener.Addr().String(), "", nil)
 	defer server.Close()
 
 }
