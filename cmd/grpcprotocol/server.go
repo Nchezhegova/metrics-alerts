@@ -14,6 +14,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -73,11 +74,96 @@ func (s *DataServiceServer) SendData(ctx context.Context, in *pb.DataRequest) (*
 		metrics.Delta = &vNew
 
 	default:
-		return nil, status.Error(codes.InvalidArgument, "unknowning metric type")
+		return nil, status.Error(codes.InvalidArgument, "unknown metric type")
 	}
 
 	return &pb.DataResponse{}, nil
+}
 
+func (s *DataServiceServer) UpdateMetric(ctx context.Context, in *pb.UpdateMetricRequest) (*pb.UpdateMetricResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	switch in.Type {
+	case config.Gauge:
+		k := in.Name
+		v, err := strconv.ParseFloat(in.Value, 64)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, "invalid gauge value")
+		}
+		s.m.GaugeStorage(ctx, k, v)
+	case config.Counter:
+		k := in.Name
+		v, err := strconv.ParseInt(in.Value, 10, 64)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, "invalid counter value")
+		}
+		s.m.CountStorage(ctx, k, v)
+	default:
+		return nil, status.Error(codes.InvalidArgument, "unknown metric type")
+	}
+	return &pb.UpdateMetricResponse{}, nil
+}
+
+func (s *DataServiceServer) UpdateBatchMetrics(ctx context.Context, in *pb.UpdateBatchMetricsRequest) (*pb.UpdateBatchMetricsResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var metricsList []storage.Metrics
+	var b io.ReadCloser
+
+	if strings.Contains(in.ContentEncoding, "gzip") {
+		gz, err := gzip.NewReader(bytes.NewReader([]byte(in.Message)))
+		if err != nil {
+			return nil, err
+		}
+		defer gz.Close()
+		b = gz
+	} else {
+		b = io.NopCloser(bytes.NewReader([]byte(in.Message)))
+	}
+
+	decoder := json.NewDecoder(b)
+	err := decoder.Decode(&metricsList)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, metrics := range metricsList {
+		switch metrics.MType {
+		case config.Gauge:
+			k := metrics.ID
+			v := metrics.Value
+			s.m.GaugeStorage(ctx, k, *v)
+		case config.Counter:
+			k := metrics.ID
+			v := metrics.Delta
+			s.m.CountStorage(ctx, k, *v)
+		default:
+			return nil, status.Error(codes.InvalidArgument, "unknown metric type")
+		}
+	}
+
+	return &pb.UpdateBatchMetricsResponse{}, nil
+}
+
+func (s *DataServiceServer) GetMetric(ctx context.Context, in *pb.GetMetricRequest) (*pb.GetMetricResponse, error) {
+	switch in.Type {
+	case config.Gauge:
+		v, exists := s.m.GetGauge(ctx, in.Name)
+		if !exists {
+			return nil, status.Error(codes.NotFound, "gauge not found")
+		}
+		return &pb.GetMetricResponse{Value: &pb.GetMetricResponse_GaugeValue{GaugeValue: v}}, nil
+	case config.Counter:
+		v, exists := s.m.GetCount(ctx, in.Name)
+		if !exists {
+			return nil, status.Error(codes.NotFound, "counter not found")
+		}
+		return &pb.GetMetricResponse{Value: &pb.GetMetricResponse_CounterValue{CounterValue: v}}, nil
+	default:
+		return nil, status.Error(codes.InvalidArgument, "unknown metric type")
+	}
 }
 
 func unaryInterceptor(s *DataServiceServer) grpc.UnaryServerInterceptor {

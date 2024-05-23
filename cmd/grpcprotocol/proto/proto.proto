@@ -6,6 +6,9 @@ option go_package = "metrics-alerts/cmd/grpcprotocol/proto";
 
 service DataService {
   rpc SendData(DataRequest) returns (DataResponse) {}
+  rpc UpdateMetric(UpdateMetricRequest) returns (UpdateMetricResponse) {}
+  rpc UpdateBatchMetrics(UpdateBatchMetricsRequest) returns (UpdateBatchMetricsResponse) {}
+  rpc GetMetric(GetMetricRequest) returns (GetMetricResponse) {}
 }
 
 message DataRequest {
@@ -15,4 +18,31 @@ message DataRequest {
 
 message DataResponse {
   string reply = 1;
+}
+
+message UpdateMetricRequest {
+  string type = 1;
+  string name = 2;
+  string value = 3;
+}
+
+message UpdateMetricResponse {}
+
+message UpdateBatchMetricsRequest {
+  string message = 1;
+  string content_encoding = 2;
+}
+
+message UpdateBatchMetricsResponse {}
+
+message GetMetricRequest {
+  string type = 1;
+  string name = 2;
+}
+
+message GetMetricResponse {
+  oneof value {
+    double gauge_value = 1;
+    int64 counter_value = 2;
+  }
 }
